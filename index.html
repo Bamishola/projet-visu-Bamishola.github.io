@@ -1,13 +1,146 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AgriShift Atlas</title>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <a href="./TPs/tp4.html">Lien vers index3.html</a>
-    <a href="index4.html">Lien vers index4.html</a>
-    <a href="index5.html">Lien vers index5.html</a>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-title">AgriShift Atlas</div>
+      <div class="brand-sub">Évolution mondiale des cultures (FAOSTAT)</div>
+    </div>
+
+    <nav class="nav">
+      <button id="btnDashboard" class="navbtn active">Dashboard</button>
+      <button id="btnCountry" class="navbtn">Détails pays</button>
+    </nav>
+  </header>
+
+  <!-- PAGE 1 -->
+  <main id="pageDashboard" class="page">
+    <aside class="panel controls">
+      <h2>Contrôles</h2>
+
+      <label>Culture</label>
+      <select id="selItem"></select>
+
+      <label>Indicateur</label>
+      <select id="selElement"></select>
+
+      <label>Année: <span id="lblYear"></span></label>
+      <input id="yearSlider" type="range" min="1980" max="2024" step="1" value="1980" />
+
+      <div class="row">
+        <button id="btnPlay" class="btn">▶ Play</button>
+        <button id="btnReset" class="btn ghost">Reset</button>
+      </div>
+
+      <label>Échelle</label>
+      <select id="selScale">
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+
+      <label>Top N: <span id="lblTopN"></span></label>
+      <input id="topNSlider" type="range" min="5" max="30" step="1" />
+
+      <div class="hint">
+        Astuce : clique un pays (carte / ranking / scatter) pour ouvrir “Détails pays”.
+      </div>
+    </aside>
+
+    <section class="grid">
+      <div class="card card-map">
+        <div class="card-title">Carte</div>
+        <svg id="svgMap"></svg>
+        <div id="mapLegend" class="legend"></div>
+      </div>
+
+      <div class="card card-top">
+        <div class="top-split">
+          <div class="top-panel">
+            <div class="card-title">Top pays</div>
+            <svg id="svgTopCountries"></svg>
+          </div>
+          <div class="top-panel">
+            <div class="card-title">Top continents / régions</div>
+            <svg id="svgTopContinents"></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-scatter">
+        <div class="card-title">Intensification (Surface vs Rendement)</div>
+        <div class="card-subtitle">X = Area harvested (ha), Y = Yield (kg/ha), taille = Production (t)</div>
+        <svg id="svgScatter"></svg>
+      </div>
+
+      <div class="card card-mini">
+        <div class="card-title">Série temporelle (pays sélectionné)</div>
+        <div id="miniTitle" class="card-subtitle">Aucun pays sélectionné</div>
+        <svg id="svgMiniLine"></svg>
+      </div>
+    </section>
+  </main>
+
+  <!-- PAGE 2 -->
+  <main id="pageCountry" class="page hidden">
+    <section class="countryHeader">
+      <button id="btnBack" class="btn ghost">← Retour</button>
+      <div>
+        <div id="countryName" class="countryTitle">Aucun pays sélectionné</div>
+        <div id="countryMeta" class="countryMeta">Clique un pays sur la page Dashboard.</div>
+      </div>
+    </section>
+
+    <section class="countryGrid">
+      <div class="card kpis">
+        <div class="card-title">KPIs (année sélectionnée)</div>
+        <div class="kpiRow">
+          <div class="kpi">
+            <div class="kpiLabel">Production</div>
+            <div id="kpiProd" class="kpiValue">—</div>
+            <div id="kpiProdUnit" class="kpiUnit"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpiLabel">Surface</div>
+            <div id="kpiArea" class="kpiValue">—</div>
+            <div id="kpiAreaUnit" class="kpiUnit"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpiLabel">Rendement</div>
+            <div id="kpiYield" class="kpiValue">—</div>
+            <div id="kpiYieldUnit" class="kpiUnit"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card detailBars">
+        <div class="card-title">Comparaison des 3 indicateurs (année sélectionnée)</div>
+        <svg id="svgBars"></svg>
+      </div>
+
+      <div class="card smallMultiples">
+        <div class="card-title">Évolution (sparklines) par indicateur</div>
+        <svg id="svgSparklines"></svg>
+      </div>
+
+      <div class="card cropBreakdown">
+        <div class="card-title">Répartition par culture (optionnel)</div>
+        <div class="card-subtitle">Même année, indicateur choisi</div>
+        <svg id="svgCropBars"></svg>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip hidden"></div>
+  <script src="main.js"></script>
 </body>
 </html>

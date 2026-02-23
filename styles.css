@@ -82,8 +82,8 @@ input[type="range"]{padding:0; height:34px}
 
 .grid{
   display:grid;
-  grid-template-columns: 1fr 420px;
-  grid-template-rows: 420px 320px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(520px, 1fr);
+  grid-template-rows: 500px 320px;
   gap:16px;
   flex:1;
 }
@@ -110,20 +110,39 @@ input[type="range"]{padding:0; height:34px}
 .card-scatter{grid-column:1/2; grid-row:2/3}
 .card-mini{grid-column:2/3; grid-row:2/3}
 
+.card-map,
+.card-top{
+  display:flex;
+  flex-direction:column;
+}
+
+#svgMap{
+  flex:1;
+  min-height:0;
+}
+
 .top-split{
   display:grid;
   grid-template-rows: 1fr 1fr;
-  gap:12px;
+  gap:10px;
   height:100%;
+  min-height:0;
 }
 
 .top-panel{
+  display:flex;
+  flex-direction:column;
   min-height:0;
+}
+
+.top-panel .card-title{
+  margin-bottom:6px;
 }
 
 #svgTopCountries,
 #svgTopContinents{
-  height:170px;
+  flex:1;
+  min-height:0;
 }
 
 svg{width:100%; height:100%}
