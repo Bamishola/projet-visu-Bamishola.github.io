@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenAQ Paris — Visualisations</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7fb;
+        --card: #ffffff;
+        --text: #1c1c1c;
+        --muted: #6b6b6b;
+        --accent: #2a5ee8;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 24px 28px;
+        background: var(--card);
+        border-bottom: 1px solid #e5e7eb;
+      }
+      header h1 {
+        margin: 0 0 6px 0;
+        font-size: 22px;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 20px 40px;
+        display: grid;
+        gap: 20px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px 16px 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      }
+      .card h2 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 16px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      label {
+        font-size: 13px;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      select,
+      input[type="number"] {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+        min-width: 200px;
+      }
+      .chart {
+        width: 100%;
+        height: auto;
+      }
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 8px 0;
+      }
+      .footer {
+        padding: 16px 20px 28px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Qualité de l'air à Paris — OpenAQ</h1>
+      <p>Fichier: data/openaq_paris_daily.csv</p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Série d'observations par lieu et polluant</h2>
+        <p class="note">Si la date est absente, la série est tracée par ordre d'observation.</p>
+        <div class="controls">
+          <label>
+            Polluant
+            <select id="line-parameter"></select>
+          </label>
+          <label>
+            Lieu
+            <select id="line-location"></select>
+          </label>
+        </div>
+        <div id="line-chart" class="chart"></div>
+      </section>
+
+      <section class="card">
+        <h2>Top lieux par moyenne (polluant)</h2>
+        <div class="controls">
+          <label>
+            Polluant
+            <select id="bar-parameter"></select>
+          </label>
+          <label>
+            Top N
+            <input id="bar-top" type="number" min="3" max="30" step="1" value="12" />
+          </label>
+        </div>
+        <div id="bar-chart" class="chart"></div>
+      </section>
+
+      <section class="card">
+        <h2>Comparaison entre deux polluants</h2>
+        <div class="controls">
+          <label>
+            Polluant X
+            <select id="scatter-x"></select>
+          </label>
+          <label>
+            Polluant Y
+            <select id="scatter-y"></select>
+          </label>
+        </div>
+        <div id="scatter-chart" class="chart"></div>
+      </section>
+    </main>
+
+    <div class="footer">Visualisations D3.js — données OpenAQ</div>
+
+    <script>
+      const DATA_PATH = "data/openaq_paris_daily.csv";
+
+      const parseDateSafe = (s) => {
+        if (!s) return null;
+        return (
+          d3.isoParse(s) ||
+          d3.timeParse("%Y-%m-%d")(s) ||
+          d3.timeParse("%Y-%m-%dT%H:%M:%S")(s)
+        );
+      };
+
+      const toNumber = (v) => (v == null || v === "" ? NaN : +v);
+
+      const lineParamSel = document.getElementById("line-parameter");
+      const lineLocationSel = document.getElementById("line-location");
+      const barParamSel = document.getElementById("bar-parameter");
+      const barTopInput = document.getElementById("bar-top");
+      const scatterXSel = document.getElementById("scatter-x");
+      const scatterYSel = document.getElementById("scatter-y");
+
+      const lineChartEl = d3.select("#line-chart");
+      const barChartEl = d3.select("#bar-chart");
+      const scatterChartEl = d3.select("#scatter-chart");
+
+      const width = 980;
+      const height = 420;
+      const margin = { top: 30, right: 20, bottom: 60, left: 60 };
+
+      function fillSelect(select, options, value) {
+        select.innerHTML = "";
+        options.forEach((opt) => {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt;
+          select.appendChild(o);
+        });
+        if (value && options.includes(value)) {
+          select.value = value;
+        }
+      }
+
+      function drawLine(data, parameter, location) {
+        const filtered = data.filter(
+          (d) => d.parameter === parameter && d.location_name === location
+        );
+
+        const hasDates = filtered.some((d) => d.date instanceof Date && !isNaN(d.date));
+        const series = filtered
+          .map((d, i) => ({
+            index: i,
+            date: d.date,
+            value: d.value
+          }))
+          .filter((d) => Number.isFinite(d.value))
+          .sort((a, b) => {
+            if (hasDates && a.date && b.date) return d3.ascending(a.date, b.date);
+            return d3.ascending(a.index, b.index);
+          });
+
+        lineChartEl.selectAll("*").remove();
+        const svg = lineChartEl
+          .append("svg")
+          .attr("viewBox", [0, 0, width, height]);
+
+        if (series.length === 0) {
+          svg
+            .append("text")
+            .attr("x", margin.left)
+            .attr("y", margin.top)
+            .text("Pas de données disponibles pour ce filtre.");
+          return;
+        }
+
+        const x = hasDates
+          ? d3
+              .scaleTime()
+              .domain(d3.extent(series, (d) => d.date))
+              .range([margin.left, width - margin.right])
+          : d3
+              .scaleLinear()
+              .domain([0, series.length - 1])
+              .range([margin.left, width - margin.right]);
+
+        const y = d3
+          .scaleLinear()
+          .domain(d3.extent(series, (d) => d.value))
+          .nice()
+          .range([height - margin.bottom, margin.top]);
+
+        svg
+          .append("g")
+          .attr("transform", `translate(0,${height - margin.bottom})`)
+          .call(hasDates ? d3.axisBottom(x) : d3.axisBottom(x).ticks(6))
+          .selectAll("text")
+          .attr("transform", "rotate(-20)")
+          .style("text-anchor", "end");
+
+        svg
+          .append("g")
+          .attr("transform", `translate(${margin.left},0)`)
+          .call(d3.axisLeft(y));
+
+        const line = d3
+          .line()
+          .x((d) => (hasDates ? x(d.date) : x(d.index)))
+          .y((d) => y(d.value));
+
+        svg
+          .append("path")
+          .datum(series)
+          .attr("fill", "none")
+          .attr("stroke", "currentColor")
+          .attr("stroke-width", 1.8)
+          .attr("d", line);
+
+        svg
+          .append("text")
+          .attr("x", margin.left)
+          .attr("y", 18)
+          .attr("font-size", 14)
+          .attr("font-weight", 600)
+          .text(`${parameter.toUpperCase()} — ${location}`);
+      }
+
+      function drawBar(data, parameter, topN) {
+        const grouped = d3
+          .rollups(
+            data.filter((d) => d.parameter === parameter && Number.isFinite(d.value)),
+            (v) => d3.mean(v, (d) => d.value),
+            (d) => d.location_name
+          )
+          .map(([location, value]) => ({ location, value }))
+          .sort((a, b) => d3.descending(a.value, b.value))
+          .slice(0, topN);
+
+        barChartEl.selectAll("*").remove();
+        const svg = barChartEl
+          .append("svg")
+          .attr("viewBox", [0, 0, width, height]);
+
+        if (grouped.length === 0) {
+          svg
+            .append("text")
+            .attr("x", margin.left)
+            .attr("y", margin.top)
+            .text("Pas de données disponibles pour ce filtre.");
+          return;
+        }
+
+        const x = d3
+          .scaleBand()
+          .domain(grouped.map((d) => d.location))
+          .range([margin.left, width - margin.right])
+          .padding(0.2);
+
+        const y = d3
+          .scaleLinear()
+          .domain([0, d3.max(grouped, (d) => d.value)])
+          .nice()
+          .range([height - margin.bottom, margin.top]);
+
+        svg
+          .append("g")
+          .attr("transform", `translate(0,${height - margin.bottom})`)
+          .call(d3.axisBottom(x))
+          .selectAll("text")
+          .attr("transform", "rotate(-30)")
+          .style("text-anchor", "end");
+
+        svg
+          .append("g")
+          .attr("transform", `translate(${margin.left},0)`)
+          .call(d3.axisLeft(y));
+
+        svg
+          .selectAll("rect")
+          .data(grouped)
+          .join("rect")
+          .attr("x", (d) => x(d.location))
+          .attr("y", (d) => y(d.value))
+          .attr("height", (d) => y(0) - y(d.value))
+          .attr("width", x.bandwidth())
+          .attr("fill", "currentColor");
+
+        svg
+          .append("text")
+          .attr("x", margin.left)
+          .attr("y", 18)
+          .attr("font-size", 14)
+          .attr("font-weight", 600)
+          .text(`Top ${topN} — moyenne ${parameter.toUpperCase()}`);
+      }
+
+      function drawScatter(data, paramX, paramY) {
+        const byLocation = d3.rollups(
+          data.filter((d) => Number.isFinite(d.value)),
+          (v) => d3.mean(v, (d) => d.value),
+          (d) => d.location_name,
+          (d) => d.parameter
+        );
+
+        const points = [];
+        for (const [location, paramMap] of byLocation) {
+          const map = new Map(paramMap);
+          const x = map.get(paramX);
+          const y = map.get(paramY);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            points.push({ location, x, y });
+          }
+        }
+
+        scatterChartEl.selectAll("*").remove();
+        const svg = scatterChartEl
+          .append("svg")
+          .attr("viewBox", [0, 0, width, height]);
+
+        if (points.length === 0) {
+          svg
+            .append("text")
+            .attr("x", margin.left)
+            .attr("y", margin.top)
+            .text("Pas de données disponibles pour ce filtre.");
+          return;
+        }
+
+        const x = d3
+          .scaleLinear()
+          .domain(d3.extent(points, (d) => d.x))
+          .nice()
+          .range([margin.left, width - margin.right]);
+
+        const y = d3
+          .scaleLinear()
+          .domain(d3.extent(points, (d) => d.y))
+          .nice()
+          .range([height - margin.bottom, margin.top]);
+
+        svg
+          .append("g")
+          .attr("transform", `translate(0,${height - margin.bottom})`)
+          .call(d3.axisBottom(x));
+
+        svg
+          .append("g")
+          .attr("transform", `translate(${margin.left},0)`)
+          .call(d3.axisLeft(y));
+
+        svg
+          .append("g")
+          .selectAll("circle")
+          .data(points)
+          .join("circle")
+          .attr("cx", (d) => x(d.x))
+          .attr("cy", (d) => y(d.y))
+          .attr("r", 3.2)
+          .attr("fill", "currentColor")
+          .append("title")
+          .text((d) => `${d.location}\n${paramX}: ${d.x.toFixed(2)}\n${paramY}: ${d.y.toFixed(2)}`);
+
+        svg
+          .append("text")
+          .attr("x", margin.left)
+          .attr("y", 18)
+          .attr("font-size", 14)
+          .attr("font-weight", 600)
+          .text(`Scatter — ${paramX.toUpperCase()} vs ${paramY.toUpperCase()}`);
+      }
+
+      d3.csv(DATA_PATH, (d, i) => ({
+        city: d.city,
+        location_id: d.location_id,
+        location_name: d.location_name,
+        country: d.country,
+        latitude: d.latitude ? +d.latitude : null,
+        longitude: d.longitude ? +d.longitude : null,
+        sensor_id: d.sensor_id,
+        parameter: d.parameter,
+        unit: d.unit,
+        date: parseDateSafe(d.date),
+        value: toNumber(d.value),
+        _index: i
+      }))
+        .then((data) => {
+          const clean = data.filter((d) => d.parameter && d.location_name);
+          const parameters = Array.from(new Set(clean.map((d) => d.parameter))).sort(d3.ascending);
+          const locations = Array.from(new Set(clean.map((d) => d.location_name))).sort(d3.ascending);
+
+          fillSelect(lineParamSel, parameters, parameters[0]);
+          fillSelect(lineLocationSel, locations, locations[0]);
+          fillSelect(barParamSel, parameters, parameters[0]);
+          fillSelect(scatterXSel, parameters, parameters[0]);
+          fillSelect(scatterYSel, parameters, parameters[1] || parameters[0]);
+
+          const renderAll = () => {
+            drawLine(clean, lineParamSel.value, lineLocationSel.value);
+            drawBar(clean, barParamSel.value, Math.max(3, +barTopInput.value || 10));
+            drawScatter(clean, scatterXSel.value, scatterYSel.value);
+          };
+
+          lineParamSel.addEventListener("change", renderAll);
+          lineLocationSel.addEventListener("change", renderAll);
+          barParamSel.addEventListener("change", renderAll);
+          barTopInput.addEventListener("input", renderAll);
+          scatterXSel.addEventListener("change", renderAll);
+          scatterYSel.addEventListener("change", renderAll);
+
+          renderAll();
+        })
+        .catch((err) => {
+          lineChartEl.text("Erreur de chargement des données.");
+          barChartEl.text("Erreur de chargement des données.");
+          scatterChartEl.text("Erreur de chargement des données.");
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>

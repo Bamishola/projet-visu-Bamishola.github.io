@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    // --- Paramètres ---
+    var width = 700,
+      height = 580;
+
+    // --- Slider (jour) ---
+    var slider = d3
+      .select("body")
+      .append("input")
+      .attr("type", "range")
+      .attr("min", 0)
+      .attr("value", 0)
+      .style("position", "absolute")
+      .style("left", "20px")
+      .style("top", "20px")
+      .style("width", "320px");
+
+    // --- Bouton Play/Pause ---
+    var playBtn = d3
+      .select("body")
+      .append("button")
+      .style("position", "absolute")
+      .style("left", "20px")
+      .style("top", "45px")
+      .style("padding", "4px 10px")
+      .style("border", "1px solid #ddd")
+      .style("border-radius", "4px")
+      .style("background", "white")
+      .style("cursor", "pointer")
+      .text("▶ Play");
+
+    // --- Label date ---
+    var label = d3
+      .select("body")
+      .append("div")
+      .style("position", "absolute")
+      .style("left", "360px")
+      .style("top", "18px")
+      .style("padding", "4px 8px")
+      .style("background", "rgba(255,255,255,0.9)")
+      .style("border", "1px solid #ddd")
+      .style("border-radius", "4px")
+      .style("font-size", "12px")
+      .text("");
+
+    // --- Tooltip ---
+    var tooltip = d3
+      .select("body")
+      .append("div")
+      .style("position", "absolute")
+      .style("pointer-events", "none")
+      .style("padding", "6px 8px")
+      .style("background", "rgba(255,255,255,0.95)")
+      .style("border", "1px solid #ddd")
+      .style("border-radius", "4px")
+      .style("font-size", "12px")
+      .style("display", "none");
+
+    // --- SVG ---
+    var svg = d3
+      .select("body")
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    var g = svg.append("g");
+
+    // --- Projection France ---
+    var projection = d3
+      .geoConicConformal()
+      .center([2.454071, 46.279229])
+      .scale(2800)
+      .translate([width / 2, height / 2]);
+
+    var path = d3.geoPath().projection(projection);
+
+    // --- Echelle de couleur ---
+    var color = d3
+      .scaleQuantize()
+      .range(["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"]);
+
+    // --- Chargements ---
+    Promise.all([
+      d3.json(
+        "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
+      ),
+      d3.csv(
+        "https://lyondataviz.github.io/teaching/lyon1-m2/2021/data/covid-06-11-2021.csv"
+      )
+    ]).then(function ([json, data]) {
+      // Liste des jours
+      var jours = Array.from(new Set(data.map((d) => d.jour))).sort();
+
+      // config slider
+      slider.attr("max", jours.length - 1);
+
+      // Etat animation
+      var idx = 0;
+      var isPlaying = false;
+      var timer = null;
+
+      // Dessin des départements (une fois)
+      g.selectAll("path")
+        .data(json.features)
+        .join("path")
+        .attr("d", path)
+        .attr("stroke", "white")
+        .attr("stroke-width", 0.6)
+        .style("fill", "#ccc")
+        .on("mousemove", function (event, d) {
+          var nom =
+            d.properties.nom ||
+            d.properties.name ||
+            d.properties.libelle ||
+            d.properties.code;
+
+          var val = d.properties.value;
+
+          tooltip
+            .style("display", "block")
+            .style("left", event.pageX + 12 + "px")
+            .style("top", event.pageY + 12 + "px")
+            .html(
+              "<b>" + nom + "</b><br/>Hosp : " + (val != null ? val : "N/A")
+            );
+
+          d3.select(this).attr("stroke", "#222").attr("stroke-width", 1.2);
+        })
+        .on("mouseleave", function () {
+          tooltip.style("display", "none");
+          d3.select(this).attr("stroke", "white").attr("stroke-width", 0.6);
+        });
+
+      function update(jourChoisi) {
+        // Filtrage sexe == 0 et jour choisi
+        var cleanData = data.filter(function (d) {
+          return d.sexe == "0" && d.jour == jourChoisi;
+        });
+
+        // Domaine dynamique
+        var extentHosp = d3.extent(cleanData, function (d) {
+          return +d.hosp;
+        });
+
+        if (extentHosp[0] == null || extentHosp[1] == null) extentHosp = [0, 1];
+        color.domain(extentHosp);
+
+        // Map dep -> hosp
+        var hospByDep = new Map(
+          cleanData.map(function (d) {
+            return [d.dep, +d.hosp];
+          })
+        );
+
+        // Injecter valeurs dans le GeoJSON
+        json.features.forEach(function (f) {
+          var depCode = f.properties.code; // "01", "75", ...
+          var v = hospByDep.get(depCode);
+          f.properties.value = v != null ? v : null;
+        });
+
+        // label
+        label.text("Jour : " + jourChoisi);
+
+        // recolor
+        g.selectAll("path")
+          .data(json.features)
+          .transition()
+          .duration(250)
+          .style("fill", function (d) {
+            var value = d.properties.value;
+            return value != null ? color(value) : "#ccc";
+          });
+      }
+
+      function stop() {
+        isPlaying = false;
+        playBtn.text("▶ Play");
+        if (timer) timer.stop();
+        timer = null;
+      }
+
+      function play() {
+        isPlaying = true;
+        playBtn.text("⏸ Pause");
+
+        if (idx >= jours.length - 1) idx = 0;
+
+        slider.property("value", idx);
+        update(jours[idx]);
+
+        timer = d3.interval(function () {
+          idx += 1;
+
+          if (idx >= jours.length) {
+            stop(); // stop à la fin
+            return;
+          }
+
+          slider.property("value", idx);
+          update(jours[idx]);
+        }, 600);
+      }
+
+      // Bouton play/pause
+      playBtn.on("click", function () {
+        if (isPlaying) stop();
+        else play();
+      });
+
+      // Slider manuel : stop + sync idx
+      slider.on("input", function () {
+        stop();
+        idx = +this.value;
+        update(jours[idx]);
+      });
+
+      // Affichage initial
+      idx = 0;
+      slider.property("value", idx);
+      update(jours[idx]);
+    });
+  </script>
+</body>
