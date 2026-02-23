@@ -1,5 +1,5 @@
 // ---------- Config ----------
-const DATA_URL = "data/data2/my_faostat_subset_long.csv";
+const DATA_URL = "data/my_faostat_subset_long.csv";
 const WORLD_TOPOJSON_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 const mapSvg = d3.select("#map");

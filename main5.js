@@ -1,10 +1,14 @@
 // =========================
 // Config
 // =========================
-const DATA_URL = "data/data2/my_faostat_subset_long.csv";
+const DATA_URL = "data/my_faostat_subset_long.csv";
 const WORLD_TOPOJSON = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 const ELEMENTS_REQUIRED = ["Production", "Area harvested", "Yield"]; // doit exister dans ton CSV
+
+// Attendre que le DOM soit prêt
+document.addEventListener('DOMContentLoaded', function() {
+
 let state = {
   item: null,
   element: "Production",
@@ -66,6 +70,12 @@ const kpiYield = $("#kpiYield");
 const kpiProdUnit = $("#kpiProdUnit");
 const kpiAreaUnit = $("#kpiAreaUnit");
 const kpiYieldUnit = $("#kpiYieldUnit");
+
+// Vérification que tous les éléments existent
+if (!selItem || !selElement || !yearSlider) {
+  console.error("❌ Erreur: Certains éléments DOM sont manquants!");
+  console.error("selItem:", selItem, "selElement:", selElement, "yearSlider:", yearSlider);
+}
 
 // =========================
 // Helpers
@@ -205,7 +215,9 @@ Promise.all([
   btnBack.addEventListener("click", () => navigate("dashboard"));
 }).catch(err => {
   console.error("Erreur de chargement:", err);
-  alert("Erreur de chargement des données. Vérifie les chemins du CSV et la console.");
+  console.error("Message:", err.message);
+  console.error("Stack:", err.stack);
+  alert("Erreur de chargement des données.\nErreur: " + err.message + "\n\nVérifie la console pour plus de détails.");
 });
 
 function togglePlay() {
@@ -250,6 +262,11 @@ let nameById = new Map(); // world-atlas doesn’t include names; in ton projet,
 // Pour un prototype, tu peux cliquer sur le pays si tu as déjà un matching (sinon utilise le ranking/scatter).
 
 function initMap(countries) {
+  if (!svgMap.node()) {
+    console.error("❌ Element svgMap n'existe pas!");
+    return;
+  }
+  
   const w = svgMap.node().clientWidth || 800;
   const h = svgMap.node().clientHeight || 400;
   
@@ -768,3 +785,5 @@ function renderCropBreakdown(area) {
     .attr("fill","rgba(91,124,250,.55)")
     .attr("rx",6);
 }
+
+}); // Fin DOMContentLoaded
