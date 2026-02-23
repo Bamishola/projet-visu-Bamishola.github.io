@@ -24,6 +24,8 @@ document.addEventListener("DOMContentLoaded", function () {
   let byGeoKey = new Map(); // key = `${M49}|${Item}|${Element}|${Year}` => Value
   let units = new Map(); // key = `${Item}|${Element}` => Unit (approx)
   let areaByM49 = new Map(); // key = M49 (normalisé) => Area
+  let m49ByArea = new Map(); // key = Area => M49 (normalisé)
+  let countryM49Set = new Set(); // M49 présents dans les géométries de pays
   let areasSet = new Set();
   let itemsSet = new Set();
 
@@ -46,7 +48,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // SVGs
   const svgMap = d3.select("#svgMap");
-  const svgTop = d3.select("#svgTop");
+  const svgTopCountries = d3.select("#svgTopCountries");
+  const svgTopContinents = d3.select("#svgTopContinents");
   const svgScatter = d3.select("#svgScatter");
   const svgMiniLine = d3.select("#svgMiniLine");
 
@@ -142,6 +145,12 @@ document.addEventListener("DOMContentLoaded", function () {
     return bad.some((s) => areaName.includes(s));
   }
 
+  function isCountryArea(areaName) {
+    const m49 = m49ByArea.get(areaName);
+    if (m49 && countryM49Set.has(m49)) return true;
+    return !isLikelyAggregate(areaName);
+  }
+
   // =========================
   // Load
   // =========================
@@ -175,6 +184,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (m49) {
           byGeoKey.set(`${m49}|${r.Item}|${r.Element}|${r.Year}`, v);
           if (!areaByM49.has(m49)) areaByM49.set(m49, r.Area);
+          if (!m49ByArea.has(r.Area)) m49ByArea.set(r.Area, m49);
         }
 
         const uKey = `${r.Item}|${r.Element}`;
@@ -255,9 +265,9 @@ document.addEventListener("DOMContentLoaded", function () {
       btnPlay.addEventListener("click", togglePlay);
       btnReset.addEventListener("click", () => {
         stopPlay();
-        state.year = 1980;
-        yearSlider.value = 1980;
-        lblYear.textContent = 1980;
+        state.year = +yearSlider.min;
+        yearSlider.value = state.year;
+        lblYear.textContent = state.year;
         state.topN = 15;
         topNSlider.value = 15;
         lblTopN.textContent = 15;
@@ -361,6 +371,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const w = svgMap.node().clientWidth || 800;
     const h = svgMap.node().clientHeight || 400;
 
+    countryM49Set = new Set(
+      countries.map((feature) => featureM49(feature)).filter((m49) => m49 != null)
+    );
+
     projection = d3.geoNaturalEarth1().fitSize([w, h], { type: "Sphere" });
     path = d3.geoPath(projection);
 
@@ -404,7 +418,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderMap() {
     const vals = [];
     for (const area of areasSet) {
-      if (isLikelyAggregate(area)) continue;
+      if (!isCountryArea(area)) continue;
       const v = byKey.get(key(area, state.item, state.element, state.year));
       if (v != null && !isNaN(v)) vals.push(v);
     }
@@ -461,25 +475,57 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderTop() {
     const unit = units.get(`${state.item}|${state.element}`) || "";
 
-    let rows = [];
+    const allRows = [];
     for (const area of areasSet) {
-      if (isLikelyAggregate(area)) continue;
       const v = byKey.get(key(area, state.item, state.element, state.year));
-      if (v != null && !isNaN(v)) rows.push({ area, value: v });
+      if (v == null || isNaN(v)) continue;
+      allRows.push({ area, value: v });
     }
-    rows.sort((a, b) => d3.descending(a.value, b.value));
-    rows = rows.slice(0, state.topN);
 
-    const w = svgTop.node().clientWidth || 420;
-    const h = svgTop.node().clientHeight || 420;
-    svgTop.attr("viewBox", `0 0 ${w} ${h}`);
-    svgTop.selectAll("*").remove();
+    const countryRows = allRows
+      .filter((d) => isCountryArea(d.area))
+      .sort((a, b) => d3.descending(a.value, b.value))
+      .slice(0, state.topN);
 
-    const margin = { top: 10, right: 20, bottom: 30, left: 140 };
+    const continentRows = allRows
+      .filter((d) => !isCountryArea(d.area))
+      .sort((a, b) => d3.descending(a.value, b.value))
+      .slice(0, state.topN);
+
+    renderTopChart(svgTopCountries, countryRows, unit, true, "Aucune donnée pays.");
+    renderTopChart(
+      svgTopContinents,
+      continentRows,
+      unit,
+      false,
+      "Aucune donnée continent/région."
+    );
+  }
+
+  function renderTopChart(svg, rows, unit, clickable, emptyLabel) {
+    if (!svg.node()) return;
+
+    const w = svg.node().clientWidth || 420;
+    const h = svg.node().clientHeight || 180;
+    svg.attr("viewBox", `0 0 ${w} ${h}`);
+    svg.selectAll("*").remove();
+
+    if (rows.length === 0) {
+      svg
+        .append("text")
+        .attr("x", 12)
+        .attr("y", 20)
+        .attr("fill", "rgba(232,238,252,.75)")
+        .attr("font-size", 12)
+        .text(emptyLabel);
+      return;
+    }
+
+    const margin = { top: 8, right: 20, bottom: 26, left: 140 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
-    const g = svgTop
+    const g = svg
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
@@ -510,11 +556,14 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("width", (d) => x(d.value))
       .attr("fill", "rgba(91,124,250,.75)")
       .attr("rx", 6)
+      .style("cursor", clickable ? "pointer" : "default")
       .on("mousemove", (e, d) => {
         showTooltip(`<b>${d.area}</b><br>${formatNumber(d.value)} ${unit}`, e.clientX, e.clientY);
       })
       .on("mouseleave", hideTooltip)
-      .on("click", (_, d) => selectCountry(d.area));
+      .on("click", (_, d) => {
+        if (clickable) selectCountry(d.area);
+      });
 
     g.selectAll(".labelValue")
       .data(rows)
@@ -538,7 +587,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderScatter() {
     const rows = [];
     for (const area of areasSet) {
-      if (isLikelyAggregate(area)) continue;
+      if (!isCountryArea(area)) continue;
       const a = byKey.get(key(area, state.item, "Area harvested", state.year));
       const y = byKey.get(key(area, state.item, "Yield", state.year));
       const p = byKey.get(key(area, state.item, "Production", state.year));

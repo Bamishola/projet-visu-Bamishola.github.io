@@ -110,6 +110,22 @@ input[type="range"]{padding:0; height:34px}
 .card-scatter{grid-column:1/2; grid-row:2/3}
 .card-mini{grid-column:2/3; grid-row:2/3}
 
+.top-split{
+  display:grid;
+  grid-template-rows: 1fr 1fr;
+  gap:12px;
+  height:100%;
+}
+
+.top-panel{
+  min-height:0;
+}
+
+#svgTopCountries,
+#svgTopContinents{
+  height:170px;
+}
+
 svg{width:100%; height:100%}
 
 .legend{
