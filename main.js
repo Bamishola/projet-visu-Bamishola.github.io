@@ -432,6 +432,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const max = d3.max(vals) ?? 1;
 
     const color = buildColorScale(min, max);
+    const baseRgb = getElementBaseRgb();
 
     if (mapCountries) {
       mapCountries
@@ -450,28 +451,54 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const unit = units.get(`${state.item}|${state.element}`) || "";
     d3.select("#mapLegend").html(`
+      <span style="display:inline-flex;align-items:center;gap:6px;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.9)"></span>
+        ${state.element}
+      </span>
       <span>Min: ${formatNumber(min)} ${unit}</span>
       <span>Max: ${formatNumber(max)} ${unit}</span>
     `);
   }
 
   function buildColorScale(min, max) {
-    const interp = d3.interpolateViridis;
+    const rgb = getElementBaseRgb();
+    const alphaMin = 0.12;
+    const alphaMax = 0.95;
+
     if (state.scaleMode === "log") {
       const minPos = Math.max(1e-9, min <= 0 ? 1e-9 : min);
-      const maxPos = Math.max(minPos * 10, max);
-      const s = d3
-        .scaleSequential(interp)
-        .domain([Math.log10(minPos), Math.log10(maxPos)]);
+      const maxPos = Math.max(minPos * 1.0001, max);
+      const alphaScale = d3
+        .scaleLog()
+        .domain([minPos, maxPos])
+        .range([alphaMin, alphaMax])
+        .clamp(true);
+
       return (v) => {
         if (v == null || isNaN(v) || v <= 0) return "rgba(255,255,255,.05)";
-        return s(Math.log10(v));
+        const a = alphaScale(v);
+        return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
       };
-    } else {
-      const s = d3.scaleSequential(interp).domain([min, max]);
-      return (v) =>
-        v == null || isNaN(v) ? "rgba(255,255,255,.05)" : s(v);
     }
+
+    const safeMax = Math.max(min + 1e-9, max);
+    const alphaScale = d3
+      .scaleLinear()
+      .domain([min, safeMax])
+      .range([alphaMin, alphaMax])
+      .clamp(true);
+
+    return (v) => {
+      if (v == null || isNaN(v)) return "rgba(255,255,255,.05)";
+      const a = alphaScale(v);
+      return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+    };
+  }
+
+  function getElementBaseRgb() {
+    if (state.element === "Production") return { r: 46, g: 204, b: 113 };
+    if (state.element === "Area harvested") return { r: 231, g: 76, b: 60 };
+    return { r: 66, g: 133, b: 244 };
   }
 
   // =========================
