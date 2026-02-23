@@ -15,6 +15,7 @@ KEEP_ITEMS = {
     "Soya beans",
     "Sugar cane",
     "Wheat",
+    "Yams",
 }
 
 # Tes 3 éléments (noms comme dans le fichier)
