@@ -3,9 +3,9 @@ from pathlib import Path
 
 # ---------- CONFIG ----------
 INPUT = Path("data/Production_Crops_Livestock_E_All_Data/Production_Crops_Livestock_E_All_Data_NOFLAG.csv")
-OUTPUT = Path("data/data2/my_faostat_subset_long.csv")
+OUTPUT = Path("data/my_faostat_subset_long.csv")
 
-# Tes 8 cultures
+# Tes 9 cultures
 KEEP_ITEMS = {
     "Barley",
     "Maize (corn)",
@@ -18,14 +18,14 @@ KEEP_ITEMS = {
     "Yams",
 }
 
-# Tes 3 éléments (noms comme dans le fichier)
+# Tes 3 éléments
 KEEP_ELEMENTS = {"Area harvested", "Yield", "Production"}
 
-# Période (modifie si tu veux)
-YEAR_START = 1980
+# Période complète du dataset FAOSTAT
+YEAR_START = 1961
 YEAR_END = 2024
 
-CHUNKSIZE = 50_000  # tu peux monter/descendre selon ton PC
+CHUNKSIZE = 50_000
 
 # Colonnes "id" à garder
 ID_COLS = [
@@ -53,19 +53,21 @@ def main():
     if not INPUT.exists():
         raise FileNotFoundError(f"Fichier introuvable: {INPUT.resolve()}")
 
-    # On lit juste l'en-tête pour connaître les colonnes d'années disponibles
+    # Lire l'en-tête pour connaître les colonnes d'années disponibles
     header_cols = pd.read_csv(INPUT, nrows=0).columns.tolist()
     Y_COLS = year_cols_in_range(header_cols)
 
     if not Y_COLS:
         raise ValueError("Aucune colonne d'année trouvée dans l'intervalle demandé.")
 
+    print(f"✅ Années trouvées : {Y_COLS[0]} → {Y_COLS[-1]} ({len(Y_COLS)} années)")
+
     usecols = ID_COLS + Y_COLS
 
-    # On écrit au fur et à mesure (append) pour éviter de stocker tout en mémoire
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     first_write = True
 
-    for chunk in pd.read_csv(INPUT, usecols=usecols, chunksize=CHUNKSIZE):
+    for chunk in pd.read_csv(INPUT, usecols=usecols, chunksize=CHUNKSIZE, encoding="latin1"):
         # Filtrage items + elements
         chunk = chunk[chunk["Item"].isin(KEEP_ITEMS) & chunk["Element"].isin(KEEP_ELEMENTS)]
         if chunk.empty:
@@ -79,18 +81,15 @@ def main():
             value_name="Value",
         )
 
-        # "Year" : Y1980 -> 1980
+        # "Year" : Y1961 -> 1961
         long_df["Year"] = long_df["Year"].str.replace("Y", "", regex=False).astype("int16")
 
-        # Nettoyage valeurs : NaN / vides
-        # (Certaines lignes Yield ont des trous -> NaN)
+        # Nettoyage valeurs
         long_df["Value"] = pd.to_numeric(long_df["Value"], errors="coerce")
         long_df = long_df.dropna(subset=["Value"])
+        long_df = long_df[long_df["Value"] > 0]  # supprimer les zéros
 
-        # Optionnel : enlever les zéros (si tu ne veux pas de "0" qui encombre)
-        # long_df = long_df[long_df["Value"] != 0]
-
-        # Colonnes finales (tu peux garder les codes si tu veux)
+        # Colonnes finales
         out_cols = [
             "Area", "Area Code (M49)",
             "Item", "Item Code (CPC)",
@@ -99,16 +98,21 @@ def main():
         ]
         long_df = long_df[out_cols]
 
-        # Export (append)
         long_df.to_csv(OUTPUT, mode="w" if first_write else "a", index=False, header=first_write)
         first_write = False
 
     if first_write:
-        print("Aucune donnée trouvée avec ces filtres (items/elements/years).")
+        print("⚠️  Aucune donnée trouvée avec ces filtres.")
     else:
-        print(f"✅ Dataset créé: {OUTPUT} ({OUTPUT.stat().st_size / (1024*1024):.2f} MB)")
+        size_mb = OUTPUT.stat().st_size / (1024 * 1024)
+        print(f"✅ Dataset créé : {OUTPUT}")
+        print(f"   Taille : {size_mb:.2f} MB")
+        # Aperçu rapide
+        df = pd.read_csv(OUTPUT)
+        print(f"   Lignes : {len(df):,}")
+        print(f"   Cultures : {sorted(df['Item'].unique())}")
+        print(f"   Années : {df['Year'].min()} → {df['Year'].max()}")
+        print(f"   Pays/régions : {df['Area'].nunique()}")
 
 if __name__ == "__main__":
-    # main()
-    data = pd.read_csv(OUTPUT)
-    print(data.shape)
+    main()

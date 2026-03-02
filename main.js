@@ -137,23 +137,60 @@ document.addEventListener("DOMContentLoaded", function () {
     const bad = [
       "World",
       "Europe",
+      "European",
+      "Eastern Europe",
+      "Western Europe",
+      "Northern Europe",
+      "Southern Europe",
       "Asia",
+      "Eastern Asia",
+      "Western Asia",
+      "Southern Asia",
+      "Central Asia",
       "Americas",
+      "Northern America",
+      "Central America",
+      "South America",
       "Africa",
+      "Eastern Africa",
+      "Western Africa",
+      "Northern Africa",
+      "Southern Africa",
+      "Middle Africa",
       "Oceania",
       "European Union",
       "SIDS",
       "Developing",
       "Least Developed",
       "Land Locked",
+      "Low Income",
+      "Lower middle income",
+      "Upper middle income",
+      "High income",
+      "Net Food",
+      "Annex I",
     ];
     return bad.some((s) => areaName.includes(s));
   }
 
   function isCountryArea(areaName) {
+    if (isLikelyAggregate(areaName)) return false;
     const m49 = m49ByArea.get(areaName);
-    if (m49 && countryM49Set.has(m49)) return true;
-    return !isLikelyAggregate(areaName);
+    if (!m49) return false;
+    
+    const code = parseInt(m49, 10);
+    if (isNaN(code)) return false;
+    
+    // Exclude regional aggregates (M49 codes < 100 or 900-999)
+    if (code < 100) return false;
+    if (code >= 900 && code < 1000) return false;
+    
+    return countryM49Set.has(m49);
+  }
+
+  function isContinentOnly(areaName) {
+    const continents = ["Africa", "Americas", "Asia", "Europe", "Oceania"];
+    return continents.includes(areaName);
   }
 
   // =========================
@@ -520,7 +557,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .slice(0, state.topN);
 
     const continentRows = allRows
-      .filter((d) => !isCountryArea(d.area))
+      .filter((d) => isContinentOnly(d.area))
       .sort((a, b) => d3.descending(a.value, b.value))
       .slice(0, state.topN);
 
@@ -530,7 +567,7 @@ document.addEventListener("DOMContentLoaded", function () {
       continentRows,
       unit,
       false,
-      "Aucune donnée continent/région."
+      "Aucune donnée continent."
     );
   }
 
