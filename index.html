@@ -13,8 +13,8 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="brand-title">AgriShift Atlas</div>
-      <div class="brand-sub">Évolution mondiale des cultures (FAOSTAT)</div>
+      <div class="brand-title">Cartographie mondiale des grandes cultures (1961–2024)</div>
+      <div class="brand-sub">Analyse FAOSTAT par Bamishola LOKE | École Centrale Lyon</div>
     </div>
 
     <nav class="nav">
@@ -52,7 +52,7 @@
       <input id="topNSlider" type="range" min="5" max="30" step="1" />
 
       <div class="hint">
-        Astuce : clique un pays (carte / ranking / scatter) pour ouvrir “Détails pays”.
+        💡 Cliquez sur un pays pour l'ajouter à la comparaison (max 5). Cliquez à nouveau pour le retirer. La série temporelle affiche tous les pays sélectionnés.
       </div>
     </aside>
 
@@ -78,13 +78,16 @@
 
       <div class="card card-scatter">
         <div class="card-title">Intensification (Surface vs Rendement)</div>
-        <div class="card-subtitle">X = Area harvested (ha), Y = Yield (kg/ha), taille = Production (t)</div>
+        <div class="card-subtitle">X = Surface récoltée (ha), Y = Rendement (kg/ha), taille = Production (t) · Cliquez pour sélectionner</div>
         <svg id="svgScatter"></svg>
       </div>
 
       <div class="card card-mini">
-        <div class="card-title">Série temporelle (pays sélectionné)</div>
-        <div id="miniTitle" class="card-subtitle">Aucun pays sélectionné</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+          <div class="card-title" style="margin:0">Comparaison temporelle</div>
+          <button id="btnClearSelection" class="btn ghost" style="padding:4px 8px; font-size:11px; flex:none">Effacer</button>
+        </div>
+        <div id="miniTitle" class="card-subtitle">Aucun pays sélectionné (cliquez pour ajouter)</div>
         <svg id="svgMiniLine"></svg>
       </div>
     </section>
@@ -141,6 +144,13 @@
   </main>
 
   <div id="tooltip" class="tooltip hidden"></div>
+
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Chargement des données…</p>
+    <small>Dataset FAOSTAT · 217 389 lignes</small>
+  </div>
+
   <script src="main.js"></script>
 </body>
 </html>

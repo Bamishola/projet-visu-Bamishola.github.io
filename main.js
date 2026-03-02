@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", function () {
     scaleMode: "linear", // linear|log
     topN: 15,
     playing: false,
-    selectedCountry: null,
+    selectedCountries: [], // Sélection multiple
   };
 
   let timer = null;
@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", function () {
       : document.getElementById(sel);
 
   const tooltip = d3.select("#tooltip");
+  const loadingOverlay = $("loadingOverlay");
 
   const pageDashboard = $("#pageDashboard");
   const pageCountry = $("#pageCountry");
@@ -68,6 +69,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const btnPlay = $("#btnPlay");
   const btnReset = $("#btnReset");
+  const btnClearSelection = $("#btnClearSelection");
 
   // Detail page labels
   const countryName = $("#countryName");
@@ -134,41 +136,32 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function isLikelyAggregate(areaName) {
+    // Correspondances exactes pour les agrégats FAO connus
+    const exactAggregates = new Set([
+      "World", "Africa", "Americas", "Asia", "Europe", "Oceania",
+      "China", // agrégat FAO (mainland + Taiwan + HK + Macao)
+      "China, Taiwan Province of",
+      "European Union", "European Union (27)",
+      "Australia and New Zealand", "Caribbean",
+      "Melanesia", "Micronesia", "Polynesia",
+      "SIDS", "Small Island Developing States (SIDS)",
+      "Least Developed Countries (LDCs)",
+      "Land Locked Developing Countries (LLDCs)",
+      "Low Income Food Deficit Countries (LIFDCs)",
+      "Net Food Importing Developing Countries (NFIDCs)",
+    ]);
+    if (exactAggregates.has(areaName)) return true;
+
+    // Sous-chaînes pour les autres patterns régionaux
     const bad = [
-      "World",
-      "Europe",
-      "European",
-      "Eastern Europe",
-      "Western Europe",
-      "Northern Europe",
-      "Southern Europe",
-      "Asia",
-      "Eastern Asia",
-      "Western Asia",
-      "Southern Asia",
-      "Central Asia",
-      "Americas",
-      "Northern America",
-      "Central America",
-      "South America",
-      "Africa",
-      "Eastern Africa",
-      "Western Africa",
-      "Northern Africa",
-      "Southern Africa",
-      "Middle Africa",
-      "Oceania",
-      "European Union",
-      "SIDS",
-      "Developing",
-      "Least Developed",
-      "Land Locked",
-      "Low Income",
-      "Lower middle income",
-      "Upper middle income",
-      "High income",
-      "Net Food",
-      "Annex I",
+      "Eastern Europe", "Western Europe", "Northern Europe", "Southern Europe",
+      "Eastern Asia", "Western Asia", "Southern Asia", "Central Asia",
+      "South-eastern Asia",
+      "Northern America", "Central America", "South America",
+      "Eastern Africa", "Western Africa", "Northern Africa", "Southern Africa", "Middle Africa",
+      "Developing", "Least Developed", "Land Locked",
+      "Lower middle income", "Upper middle income", "High income", "Low Income",
+      "Net Food", "Annex I",
     ];
     return bad.some((s) => areaName.includes(s));
   }
@@ -277,6 +270,9 @@ document.addEventListener("DOMContentLoaded", function () {
       const countries = topojson.feature(world, world.objects.countries).features;
       initMap(countries);
 
+      // Masquer l'overlay de chargement
+      if (loadingOverlay) loadingOverlay.classList.add("hidden");
+
       // First render
       renderAll();
 
@@ -320,11 +316,34 @@ document.addEventListener("DOMContentLoaded", function () {
         renderAll();
       });
 
-      btnDashboard.addEventListener("click", () => navigate("dashboard"));
-      btnCountry.addEventListener("click", () => navigate("country"));
-      btnBack.addEventListener("click", () => navigate("dashboard"));
+      btnDashboard.addEventListener("click", () => {
+        navigate("dashboard");
+        renderAll();
+      });
+      btnCountry.addEventListener("click", () => {
+        if (state.selectedCountries.length > 0) {
+          navigate("country");
+          // Forcer le rendu après que la page soit visible (dimensions correctes)
+          renderCountryPage();
+        } else {
+          alert("Veuillez sélectionner au moins un pays d'abord.\nCliquez sur un pays sur la carte ou le top pays.");
+        }
+      });
+      btnBack.addEventListener("click", () => {
+        navigate("dashboard");
+        renderAll();
+      });
+      
+      btnClearSelection.addEventListener("click", () => {
+        state.selectedCountries = [];
+        renderMiniLine();
+        renderMap();
+        renderScatter();
+        renderTop();
+      });
     })
     .catch((err) => {
+      if (loadingOverlay) loadingOverlay.classList.add("hidden");
       console.error("Erreur de chargement:", err);
       console.error("Message:", err.message);
       console.error("Stack:", err.stack);
@@ -427,8 +446,8 @@ document.addEventListener("DOMContentLoaded", function () {
     mapG
       .append("path")
       .attr("d", path({ type: "Sphere" }))
-      .attr("fill", "rgba(20,28,44,.35)")
-      .attr("stroke", "rgba(255,255,255,.06)");
+      .attr("fill", "rgba(203,213,225,.5)")
+      .attr("stroke", "rgba(148,163,184,.3)");
 
     mapCountries = mapG
       .append("g")
@@ -437,8 +456,8 @@ document.addEventListener("DOMContentLoaded", function () {
       .join("path")
       .attr("class", "country")
       .attr("d", path)
-      .attr("fill", "rgba(255,255,255,.06)")
-      .attr("stroke", "rgba(255,255,255,.05)")
+      .attr("fill", "rgba(241,245,249,.8)")
+      .attr("stroke", "rgba(148,163,184,.4)")
       .on("mousemove", (e, feature) => {
         const area = areaFromFeature(feature) || "Pays";
         const v = valueFromFeature(feature);
@@ -476,25 +495,30 @@ document.addEventListener("DOMContentLoaded", function () {
         .transition()
         .duration(450)
         .attr("fill", (feature) => color(valueFromFeature(feature)))
-        .attr("stroke", (feature) =>
-          areaFromFeature(feature) === state.selectedCountry
-            ? "rgba(232,238,252,.95)"
-            : "rgba(255,255,255,.08)"
-        )
-        .attr("stroke-width", (feature) =>
-          areaFromFeature(feature) === state.selectedCountry ? 1.6 : 0.8
-        );
+        .attr("stroke", (feature) => {
+          const area = areaFromFeature(feature);
+          return state.selectedCountries.includes(area)
+            ? "rgba(30,41,59,.8)"
+            : "rgba(148,163,184,.4)";
+        })
+        .attr("stroke-width", (feature) => {
+          const area = areaFromFeature(feature);
+          return state.selectedCountries.includes(area) ? 2 : 0.8;
+        });
     }
 
     const unit = units.get(`${state.item}|${state.element}`) || "";
-    d3.select("#mapLegend").html(`
-      <span style="display:inline-flex;align-items:center;gap:6px;">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.9)"></span>
-        ${state.element}
-      </span>
-      <span>Min: ${formatNumber(min)} ${unit}</span>
-      <span>Max: ${formatNumber(max)} ${unit}</span>
-    `);
+    const legendHTML = `
+      <div style="font-weight:500; margin-bottom:8px; color:rgba(30,41,59,.9); font-size:13px">${state.element}</div>
+      <div style="display:flex; align-items:center; margin-bottom:6px">
+        <div style="height:20px; flex:1; border-radius:4px; border:1px solid rgba(148,163,184,.4); background:linear-gradient(to right, rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.12), rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.95))"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:rgba(30,41,59,.7)">
+        <span><strong>Min:</strong> ${formatNumber(min)}</span>
+        <span><strong>Max:</strong> ${formatNumber(max)} ${unit}</span>
+      </div>
+    `;
+    d3.select("#mapLegend").html(legendHTML);
   }
 
   function buildColorScale(min, max) {
@@ -590,7 +614,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const margin = { top: 8, right: 20, bottom: 24, left: 126 };
+    const margin = { top: 10, right: 20, bottom: 35, left: 130 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
@@ -612,10 +636,19 @@ document.addEventListener("DOMContentLoaded", function () {
       .range([0, innerH])
       .padding(0.15);
 
-    g.append("g")
+    const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
       .call(d3.axisBottom(x).ticks(4).tickFormat(d3.format("~s")))
       .call(styleAxis);
+    
+    xAxis.append("text")
+      .attr("x", innerW / 2)
+      .attr("y", 28)
+      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 11)
+      .attr("font-weight", "500")
+      .text(unit || "Valeur");
 
     g.append("g")
       .call(d3.axisLeft(y).tickSize(0).tickFormat((name) => truncateLabel(name, 20)))
@@ -628,7 +661,9 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("y", (d) => y(d.area))
       .attr("height", y.bandwidth())
       .attr("width", (d) => x(d.value))
-      .attr("fill", "rgba(91,124,250,.75)")
+      .attr("fill", (d) => state.selectedCountries.includes(d.area) ? "rgba(37,99,235,.9)" : "rgba(37,99,235,.5)")
+      .attr("stroke", (d) => state.selectedCountries.includes(d.area) ? "rgba(37,99,235,1)" : "none")
+      .attr("stroke-width", (d) => state.selectedCountries.includes(d.area) ? 2 : 0)
       .attr("rx", 6)
       .style("cursor", clickable ? "pointer" : "default")
       .on("mousemove", (e, d) => {
@@ -647,15 +682,15 @@ document.addEventListener("DOMContentLoaded", function () {
         .attr("class", "labelValue")
         .attr("x", (d) => x(d.value) + 6)
         .attr("y", (d) => y(d.area) + y.bandwidth() / 2 + 4)
-        .attr("fill", "rgba(232,238,252,.85)")
+        .attr("fill", "rgba(30,41,59,.85)")
         .attr("font-size", 10)
         .text((d) => d3.format("~s")(d.value));
     }
   }
 
   function styleAxis(g) {
-    g.selectAll("path,line").attr("stroke", "rgba(255,255,255,.10)");
-    g.selectAll("text").attr("fill", "rgba(232,238,252,.75)").attr("font-size", 11);
+    g.selectAll("path,line").attr("stroke", "rgba(148,163,184,.3)");
+    g.selectAll("text").attr("fill", "rgba(30,41,59,.8)").attr("font-size", 11);
   }
 
   // =========================
@@ -690,7 +725,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const margin = { top: 10, right: 20, bottom: 45, left: 60 };
+    const margin = { top: 20, right: 30, bottom: 55, left: 75 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
@@ -714,79 +749,195 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const r = d3.scaleSqrt().domain(pExt).range([2.5, 18]);
 
-    g.append("g")
+    // Axes avec labels
+    const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
       .call(d3.axisBottom(x).ticks(5, "~s"))
       .call(styleAxis);
-
-    g.append("g").call(d3.axisLeft(y).ticks(5, "~s")).call(styleAxis);
-
-    g.append("text")
+    
+    xAxis.append("text")
       .attr("x", innerW / 2)
-      .attr("y", innerH + 38)
+      .attr("y", 42)
+      .attr("fill", "rgba(30,41,59,.8)")
       .attr("text-anchor", "middle")
-      .attr("fill", "rgba(232,238,252,.7)")
       .attr("font-size", 12)
-      .text("Area harvested (ha) [log]");
+      .attr("font-weight", "500")
+      .text("Surface récoltée (ha) [log]");
 
-    g.append("text")
+    const yAxis = g.append("g")
+      .call(d3.axisLeft(y).ticks(5, "~s"))
+      .call(styleAxis);
+    
+    yAxis.append("text")
       .attr("x", -innerH / 2)
-      .attr("y", -42)
+      .attr("y", -58)
       .attr("transform", "rotate(-90)")
       .attr("text-anchor", "middle")
-      .attr("fill", "rgba(232,238,252,.7)")
+      .attr("fill", "rgba(30,41,59,.8)")
       .attr("font-size", 12)
-      .text("Yield (kg/ha) [log]");
+      .attr("font-weight", "500")
+      .text("Rendement (kg/ha) [log]");
 
-    g.selectAll("circle")
-      .data(rows)
+    // Légende pour les bulles (Production)
+    const legendX = innerW - 120;
+    const legendY = -8;
+    const legend = g.append("g")
+      .attr("transform", `translate(${legendX},${legendY})`);
+    
+    legend.append("text")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("fill", "rgba(30,41,59,.7)")
+      .attr("font-size", 10)
+      .attr("font-weight", "500")
+      .text("Taille = Production");
+    
+    const bubbleSizes = [r.domain()[0], (r.domain()[0] + r.domain()[1]) / 2, r.domain()[1]];
+    const bubbleLabels = bubbleSizes.map((v) => formatNumber(v) + "t");
+    [0, 1, 2].forEach((i) => {
+      legend.append("circle")
+        .attr("cx", 8)
+        .attr("cy", 14 + i * 14)
+        .attr("r", r(bubbleSizes[i]))
+        .attr("fill", "rgba(37,99,235,.4)")
+        .attr("stroke", "rgba(148,163,184,.3)");
+      legend.append("text")
+        .attr("x", 20)
+        .attr("y", 14 + i * 14 + 3)
+        .attr("fill", "rgba(30,41,59,.7)")
+        .attr("font-size", 9)
+        .text(bubbleLabels[i]);
+    });
+
+    // Palette de couleurs pour les pays sélectionnés
+    const colorScale = d3.scaleOrdinal()
+      .domain(state.selectedCountries)
+      .range([
+        "rgba(37,99,235,.9)",
+        "rgba(220,38,38,.9)",
+        "rgba(34,197,94,.9)",
+        "rgba(234,179,8,.9)",
+        "rgba(168,85,247,.9)",
+        "rgba(236,72,153,.9)",
+        "rgba(14,165,233,.9)",
+        "rgba(249,115,22,.9)",
+      ]);
+
+    // Séparer les points sélectionnés et non sélectionnés
+    const unselectedRows = rows.filter(d => !state.selectedCountries.includes(d.area));
+    const selectedRows = rows.filter(d => state.selectedCountries.includes(d.area));
+
+    // Dessiner d'abord les points non sélectionnés (en arrière-plan)
+    g.selectAll("circle.unselected")
+      .data(unselectedRows)
       .join("circle")
+      .attr("class", "unselected")
       .attr("cx", (d) => x(d.areaHarvested))
       .attr("cy", (d) => y(d.yield))
       .attr("r", (d) => r(d.production))
-      .attr("fill", "rgba(91,124,250,.55)")
-      .attr("stroke", "rgba(255,255,255,.18)")
-      .attr("stroke-width", 1)
+      .attr("fill", "rgba(148,163,184,.35)")
+      .attr("stroke", "rgba(148,163,184,.5)")
+      .attr("stroke-width", 0.5)
+      .style("cursor", "pointer")
       .on("mousemove", (e, d) => {
         showTooltip(
           `<b>${d.area}</b><br>
-           Surface: ${formatNumber(d.areaHarvested)} ha<br>
-           Rendement: ${formatNumber(d.yield)} kg/ha<br>
-           Production: ${formatNumber(d.production)} t`,
+           Surf: ${formatNumber(d.areaHarvested)} ha<br>
+           Rend: ${formatNumber(d.yield)} kg/ha<br>
+           Prod: ${formatNumber(d.production)} t`,
           e.clientX,
           e.clientY
         );
       })
       .on("mouseleave", hideTooltip)
       .on("click", (_, d) => selectCountry(d.area));
+
+    // Dessiner ensuite les points sélectionnés (au premier plan)
+    g.selectAll("circle.selected")
+      .data(selectedRows)
+      .join("circle")
+      .attr("class", "selected")
+      .attr("cx", (d) => x(d.areaHarvested))
+      .attr("cy", (d) => y(d.yield))
+      .attr("r", (d) => r(d.production) * 1.4)
+      .attr("fill", (d) => colorScale(d.area))
+      .attr("stroke", "white")
+      .attr("stroke-width", 3)
+      .style("cursor", "pointer")
+      .on("mousemove", (e, d) => {
+        showTooltip(
+          `<b>${d.area}</b> ✓<br>
+           Surf: ${formatNumber(d.areaHarvested)} ha<br>
+           Rend: ${formatNumber(d.yield)} kg/ha<br>
+           Prod: ${formatNumber(d.production)} t<br>
+           <em>Cliquez pour retirer</em>`,
+          e.clientX,
+          e.clientY
+        );
+      })
+      .on("mouseleave", hideTooltip)
+      .on("click", (_, d) => selectCountry(d.area));
+
+    // Ajouter des labels pour les pays sélectionnés
+    g.selectAll("text.label")
+      .data(selectedRows)
+      .join("text")
+      .attr("class", "label")
+      .attr("x", (d) => x(d.areaHarvested))
+      .attr("y", (d) => y(d.yield) - r(d.production) * 1.4 - 8)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
+      .attr("fill", (d) => colorScale(d.area))
+      .attr("stroke", "white")
+      .attr("stroke-width", 3)
+      .attr("paint-order", "stroke")
+      .text((d) => truncateLabel(d.area, 18))
+      .style("pointer-events", "none");
   }
 
   // =========================
   // MINI LINE
   // =========================
   function renderMiniLine() {
-    const area = state.selectedCountry;
+    const countries = state.selectedCountries;
     const w = svgMiniLine.node().clientWidth || 420;
     const h = svgMiniLine.node().clientHeight || 280;
     svgMiniLine.attr("viewBox", `0 0 ${w} ${h}`);
     svgMiniLine.selectAll("*").remove();
 
-    if (!area) {
-      miniTitle.textContent = "Aucun pays sélectionné";
+    if (countries.length === 0) {
+      miniTitle.textContent = "Aucun pays sélectionné (cliquez pour ajouter)";
       return;
     }
 
-    miniTitle.textContent = area;
+    miniTitle.textContent = countries.length === 1 
+      ? countries[0] 
+      : `Comparaison de ${countries.length} pays`;
 
     const years = d3.range(+yearSlider.min, +yearSlider.max + 1);
-    const series = years
-      .map((yr) => ({
-        year: yr,
-        value: byKey.get(key(area, state.item, state.element, yr)),
-      }))
-      .filter((d) => d.value != null && !isNaN(d.value));
+    
+    // Créer une série par pays
+    const allSeries = countries.map((area) => ({
+      area,
+      data: years
+        .map((yr) => ({
+          year: yr,
+          value: byKey.get(key(area, state.item, state.element, yr)),
+        }))
+        .filter((d) => d.value != null && !isNaN(d.value)),
+    })).filter(s => s.data.length > 0);
 
-    const margin = { top: 12, right: 14, bottom: 28, left: 42 };
+    if (allSeries.length === 0) {
+      miniTitle.textContent = "Pas de données pour les pays sélectionnés";
+      return;
+    }
+    
+    // Domaine Y global pour tous les pays
+    const allValues = allSeries.flatMap(s => s.data.map(d => d.value));
+    const globalYExtent = d3.extent(allValues);
+
+    const margin = { top: 18, right: 140, bottom: 42, left: 60 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
@@ -796,12 +947,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const x = d3
       .scaleLinear()
-      .domain(d3.extent(series, (d) => d.year))
+      .domain([+yearSlider.min, +yearSlider.max])
       .range([0, innerW]);
 
     const y = d3
       .scaleLinear()
-      .domain(d3.extent(series, (d) => d.value))
+      .domain(globalYExtent)
       .nice()
       .range([innerH, 0]);
 
@@ -810,43 +961,133 @@ document.addEventListener("DOMContentLoaded", function () {
       .x((d) => x(d.year))
       .y((d) => y(d.value));
 
-    g.append("path")
-      .datum(series)
-      .attr("fill", "none")
-      .attr("stroke", "rgba(91,124,250,.95)")
-      .attr("stroke-width", 2)
-      .attr("d", line);
+    // Palette de couleurs pour les pays
+    const colorScale = d3.scaleOrdinal()
+      .domain(countries)
+      .range([
+        "rgba(37,99,235,.9)",
+        "rgba(220,38,38,.9)",
+        "rgba(34,197,94,.9)",
+        "rgba(234,179,8,.9)",
+        "rgba(168,85,247,.9)",
+        "rgba(236,72,153,.9)",
+        "rgba(14,165,233,.9)",
+        "rgba(249,115,22,.9)",
+      ]);
 
-    g.append("g")
+    // Dessiner une ligne par pays
+    allSeries.forEach((series) => {
+      g.append("path")
+        .datum(series.data)
+        .attr("fill", "none")
+        .attr("stroke", colorScale(series.area))
+        .attr("stroke-width", 2.5)
+        .attr("d", line);
+    });
+
+    const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
       .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format("d")))
       .call(styleAxis);
+    
+    xAxis.append("text")
+      .attr("x", innerW / 2)
+      .attr("y", 32)
+      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 12)
+      .attr("font-weight", "500")
+      .text("Année");
 
-    g.append("g")
+    const yAxis = g.append("g")
       .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format("~s")))
       .call(styleAxis);
+    
+    yAxis.append("text")
+      .attr("x", -innerH / 2)
+      .attr("y", -45)
+      .attr("transform", "rotate(-90)")
+      .attr("text-anchor", "middle")
+      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("font-size", 12)
+      .attr("font-weight", "500")
+      .text(state.element);
 
-    const cur = series.find((d) => d.year === state.year);
-    if (cur) {
-      g.append("circle")
-        .attr("cx", x(cur.year))
-        .attr("cy", y(cur.value))
-        .attr("r", 4.5)
-        .attr("fill", "rgba(232,238,252,.95)");
-    }
+    // Afficher un point pour l'année actuelle sur chaque ligne
+    allSeries.forEach((series) => {
+      const cur = series.data.find((d) => d.year === state.year);
+      if (cur) {
+        g.append("circle")
+          .attr("cx", x(cur.year))
+          .attr("cy", y(cur.value))
+          .attr("r", 4.5)
+          .attr("fill", colorScale(series.area))
+          .attr("stroke", "white")
+          .attr("stroke-width", 2);
+      }
+    });
+
+    // Légende à droite
+    const legend = svgMiniLine
+      .append("g")
+      .attr("transform", `translate(${w - 130}, 25)`);
+    
+    legend.append("text")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
+      .attr("fill", "rgba(30,41,59,.8)")
+      .text("Pays sélectionnés:");
+
+    allSeries.forEach((series, i) => {
+      const yPos = 20 + i * 20;
+      
+      legend.append("line")
+        .attr("x1", 0)
+        .attr("x2", 20)
+        .attr("y1", yPos)
+        .attr("y2", yPos)
+        .attr("stroke", colorScale(series.area))
+        .attr("stroke-width", 2.5);
+      
+      legend.append("text")
+        .attr("x", 25)
+        .attr("y", yPos + 4)
+        .attr("font-size", 10)
+        .attr("fill", "rgba(30,41,59,.75)")
+        .text(truncateLabel(series.area, 14));
+    });
   }
 
   // =========================
   // COUNTRY PAGE
   // =========================
   function selectCountry(area) {
-    state.selectedCountry = area;
-    navigate("country");
-    renderAll();
+    // Toggle: ajouter ou retirer le pays de la sélection
+    const index = state.selectedCountries.indexOf(area);
+    if (index === -1) {
+      // Ajouter (max 5 pays)
+      if (state.selectedCountries.length < 5) {
+        state.selectedCountries.push(area);
+      } else {
+        // Remplacer le plus ancien
+        state.selectedCountries.shift();
+        state.selectedCountries.push(area);
+      }
+    } else {
+      // Retirer
+      state.selectedCountries.splice(index, 1);
+    }
+    renderMiniLine();
+    renderMap();
+    renderScatter();
+    renderTop();
   }
 
   function renderCountryPage() {
-    const area = state.selectedCountry;
+    // Afficher le dernier pays sélectionné (le plus récent)
+    const area = state.selectedCountries[state.selectedCountries.length - 1];
     if (!area) {
       countryName.textContent = "Aucun pays sélectionné";
       countryMeta.textContent = "Clique un pays sur le Dashboard.";
@@ -875,47 +1116,90 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function renderCountryBars(area) {
     const w = svgBars.node().clientWidth || 600;
-    const h = svgBars.node().clientHeight || 320;
+    const h = svgBars.node().clientHeight || 220;
     svgBars.attr("viewBox", `0 0 ${w} ${h}`);
     svgBars.selectAll("*").remove();
 
+    // Calcul du max mondial par indicateur (pays uniquement)
+    let gMaxProd = 0, gMaxArea = 0, gMaxYield = 0;
+    for (const a of areasSet) {
+      if (!isCountryArea(a)) continue;
+      const p = byKey.get(key(a, state.item, "Production", state.year));
+      const ar = byKey.get(key(a, state.item, "Area harvested", state.year));
+      const yl = byKey.get(key(a, state.item, "Yield", state.year));
+      if (p != null && !isNaN(p)) gMaxProd = Math.max(gMaxProd, p);
+      if (ar != null && !isNaN(ar)) gMaxArea = Math.max(gMaxArea, ar);
+      if (yl != null && !isNaN(yl)) gMaxYield = Math.max(gMaxYield, yl);
+    }
+
+    const prod = byKey.get(key(area, state.item, "Production", state.year));
+    const areaVal = byKey.get(key(area, state.item, "Area harvested", state.year));
+    const yldVal = byKey.get(key(area, state.item, "Yield", state.year));
+
+    const indicColors = {
+      "Production": "rgba(46,204,113,.8)",
+      "Area harvested": "rgba(231,76,60,.8)",
+      "Yield": "rgba(66,133,244,.8)",
+    };
+
+    // Chaque barre = % du maximum mondial pour cet indicateur
     const rows = [
       {
         k: "Production",
-        v: byKey.get(key(area, state.item, "Production", state.year)) || 0,
+        v: prod,
+        pct: gMaxProd > 0 && prod != null ? (prod / gMaxProd) * 100 : 0,
         unit: units.get(`${state.item}|Production`) || "t",
       },
       {
         k: "Area harvested",
-        v: byKey.get(key(area, state.item, "Area harvested", state.year)) || 0,
+        v: areaVal,
+        pct: gMaxArea > 0 && areaVal != null ? (areaVal / gMaxArea) * 100 : 0,
         unit: units.get(`${state.item}|Area harvested`) || "ha",
       },
       {
         k: "Yield",
-        v: byKey.get(key(area, state.item, "Yield", state.year)) || 0,
+        v: yldVal,
+        pct: gMaxYield > 0 && yldVal != null ? (yldVal / gMaxYield) * 100 : 0,
         unit: units.get(`${state.item}|Yield`) || "kg/ha",
       },
     ];
 
-    const margin = { top: 20, right: 20, bottom: 35, left: 120 };
+    const margin = { top: 20, right: 20, bottom: 42, left: 120 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
     const g = svgBars
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const maxV = d3.max(rows, (d) => d.v) || 1;
-    const x = d3.scaleLinear().domain([0, maxV]).range([0, innerW]);
+    // Échelle commune 0–100 % (comparable entre indicateurs)
+    const x = d3.scaleLinear().domain([0, 100]).range([0, innerW]);
     const y = d3
       .scaleBand()
       .domain(rows.map((d) => d.k))
       .range([0, innerH])
-      .padding(0.25);
+      .padding(0.3);
 
-    g.append("g")
+    // Ligne de référence à 100 % (= leader mondial)
+    g.append("line")
+      .attr("x1", x(100)).attr("x2", x(100))
+      .attr("y1", -4).attr("y2", innerH)
+      .attr("stroke", "rgba(148,163,184,.35)")
+      .attr("stroke-width", 1)
+      .attr("stroke-dasharray", "4,3");
+
+    const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
-      .call(d3.axisBottom(x).ticks(4).tickFormat(d3.format("~s")))
+      .call(d3.axisBottom(x).ticks(5).tickFormat((d) => d + "%"))
       .call(styleAxis);
+
+    xAxis.append("text")
+      .attr("x", innerW / 2)
+      .attr("y", 30)
+      .attr("fill", "rgba(30,41,59,.75)")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 11)
+      .attr("font-weight", "500")
+      .text("% du maximum mondial (100 % = leader mondial)");
 
     g.append("g").call(d3.axisLeft(y).tickSize(0)).call(styleAxis);
 
@@ -925,19 +1209,23 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("x", 0)
       .attr("y", (d) => y(d.k))
       .attr("height", y.bandwidth())
-      .attr("width", (d) => x(d.v))
-      .attr("fill", "rgba(91,124,250,.75)")
+      .attr("width", (d) => x(Math.max(0, d.pct)))
+      .attr("fill", (d) => indicColors[d.k])
       .attr("rx", 6);
 
     g.selectAll("text.v")
       .data(rows)
       .join("text")
       .attr("class", "v")
-      .attr("x", (d) => x(d.v) + 8)
+      .attr("x", (d) => x(Math.max(0, d.pct)) + 6)
       .attr("y", (d) => y(d.k) + y.bandwidth() / 2 + 4)
-      .attr("fill", "rgba(232,238,252,.85)")
-      .attr("font-size", 11)
-      .text((d) => `${formatNumber(d.v)} ${d.unit}`);
+      .attr("fill", "rgba(30,41,59,.85)")
+      .attr("font-size", 10)
+      .text((d) =>
+        d.v != null
+          ? `${formatNumber(d.v)} ${d.unit} (${d.pct.toFixed(1)}%)`
+          : "—"
+      );
   }
 
   function renderSparklines(area) {
@@ -975,6 +1263,25 @@ document.addEventListener("DOMContentLoaded", function () {
       const s = seriesList[i];
       const y0 = i * rowH;
 
+      // Toujours afficher le label, même sans données
+      g.append("text")
+        .attr("x", -12)
+        .attr("y", y0 + rowH / 2 + 4)
+        .attr("text-anchor", "end")
+        .attr("fill", "rgba(30,41,59,.78)")
+        .attr("font-size", 12)
+        .text(s.name);
+
+      if (s.values.length === 0) {
+        g.append("text")
+          .attr("x", 0)
+          .attr("y", y0 + rowH / 2 + 4)
+          .attr("fill", "rgba(30,41,59,.3)")
+          .attr("font-size", 11)
+          .text("— aucune donnée —");
+        continue;
+      }
+
       const x = d3
         .scaleLinear()
         .domain(d3.extent(s.values, (d) => d.year))
@@ -987,14 +1294,6 @@ document.addEventListener("DOMContentLoaded", function () {
         .range([y0 + rowH - 14, y0 + 6]);
 
       const line = d3.line().x((d) => x(d.year)).y((d) => y(d.value));
-
-      g.append("text")
-        .attr("x", -12)
-        .attr("y", y0 + rowH / 2 + 4)
-        .attr("text-anchor", "end")
-        .attr("fill", "rgba(232,238,252,.78)")
-        .attr("font-size", 12)
-        .text(s.name);
 
       g.append("path")
         .datum(s.values)
@@ -1029,6 +1328,17 @@ document.addEventListener("DOMContentLoaded", function () {
       .filter((d) => d.value != null && !isNaN(d.value));
 
     rows.sort((a, b) => d3.descending(a.value, b.value));
+
+    if (rows.length === 0) {
+      svgCropBars
+        .append("text")
+        .attr("x", 20)
+        .attr("y", 40)
+        .attr("fill", "rgba(30,41,59,.4)")
+        .attr("font-size", 13)
+        .text("Aucune donnée de répartition disponible pour cette sélection.");
+      return;
+    }
 
     const margin = { top: 18, right: 14, bottom: 45, left: 140 };
     const innerW = w - margin.left - margin.right;
