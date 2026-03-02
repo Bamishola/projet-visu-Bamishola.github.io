@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnCountry    = $("#btnCountry");
   const btnStats      = $("#btnStats");
   const btnBack       = $("#btnBack");
+  const dashboardLowerStart = $("dashboardLowerStart");
 
   // SVGs — Dashboard
   const svgMap           = d3.select("#svgMap");
@@ -60,6 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const svgBars       = d3.select("#svgBars");
   const svgSparklines = d3.select("#svgSparklines");
   const svgCropBars   = d3.select("#svgCropBars");
+  const svgCropLines  = d3.select("#svgCropLines");
 
   // SVGs — Stats page
   const svgCropDonut      = d3.select("#svgCropDonut");
@@ -78,11 +80,19 @@ document.addEventListener("DOMContentLoaded", function () {
   const btnPlay           = $("#btnPlay");
   const btnReset          = $("#btnReset");
   const btnClearSelection = $("#btnClearSelection");
+  const btnMapZoomIn      = $("btnMapZoomIn");
+  const btnMapZoomOut     = $("btnMapZoomOut");
+  const btnMapZoomReset   = $("btnMapZoomReset");
+
+  const mapMetaItem       = $("mapMetaItem");
+  const mapMetaElement    = $("mapMetaElement");
+  const mapMetaYear       = $("mapMetaYear");
 
   // Detail page labels
   const countryName      = $("#countryName");
   const countryMeta      = $("#countryMeta");
   const cropBreakdownMeta = $("#cropBreakdownMeta");
+  const cropTrendMeta    = $("cropTrendMeta");
   const miniTitle        = $("#miniTitle");
   const statsMeta        = $("#statsMeta");
   const kpiProd      = $("#kpiProd");
@@ -407,7 +417,17 @@ document.addEventListener("DOMContentLoaded", function () {
   // =========================
   // MAP
   // =========================
-  let mapG, projection, path, mapCountries;
+  let mapG, projection, path, mapCountries, mapZoomBehavior;
+  let mapLabelsG;
+  let mapCountryFeatures = [];
+  let mapCurrentZoom = 1;
+  let mapCountryCentroids = new Map();
+  const MANUAL_CENTROIDS = {
+    "France": [2.8, 46.5],
+    "United States of America": [-95, 38],
+    "Russia": [100, 60],
+    "Australia": [133, -27],
+  };
 
   function featureM49(feature) {
     if (feature == null || feature.id == null) return null;
@@ -489,11 +509,134 @@ document.addEventListener("DOMContentLoaded", function () {
       .on("click", (_, feature) => {
         const area = areaFromFeature(feature);
         if (!area) return;
-        selectCountry(area);
+        selectCountry(area, { scrollToLower: true });
       });
+
+    mapCountryFeatures = countries.filter((feature) => {
+      const area = areaFromFeature(feature);
+      return area && isCountryArea(area);
+    });
+
+    mapCountryFeatures.forEach((feature) => {
+      const area = areaFromFeature(feature);
+      if (area) {
+        let centroid = MANUAL_CENTROIDS[area];
+        if (centroid) {
+          centroid = projection(centroid);
+        } else {
+          centroid = path.centroid(feature);
+          const bounds = path.bounds(feature);
+          if (!isFinite(centroid[0]) || !isFinite(centroid[1]) || centroid[0] < 0 || centroid[1] < 0) {
+            centroid = [
+              (bounds[0][0] + bounds[1][0]) / 2,
+              (bounds[0][1] + bounds[1][1]) / 2,
+            ];
+          }
+        }
+        mapCountryCentroids.set(area, centroid);
+      }
+    });
+
+    mapLabelsG = mapG.append("g").attr("class", "map-label-layer");
+
+    mapZoomBehavior = d3.zoom()
+      .scaleExtent([1, 8])
+      .translateExtent([[0, 0], [w, h]])
+      .on("zoom", (event) => {
+        mapCurrentZoom = event.transform.k;
+        mapG.attr("transform", event.transform);
+        updateMapLabels(mapCurrentZoom);
+      });
+
+    svgMap.call(mapZoomBehavior);
+    svgMap.on("dblclick.zoom", null);
+
+    if (btnMapZoomIn) {
+      btnMapZoomIn.addEventListener("click", () => {
+        svgMap.transition().duration(180).call(mapZoomBehavior.scaleBy, 1.25);
+      });
+    }
+    if (btnMapZoomOut) {
+      btnMapZoomOut.addEventListener("click", () => {
+        svgMap.transition().duration(180).call(mapZoomBehavior.scaleBy, 0.8);
+      });
+    }
+    if (btnMapZoomReset) {
+      btnMapZoomReset.addEventListener("click", () => {
+        svgMap.transition().duration(220).call(mapZoomBehavior.transform, d3.zoomIdentity);
+      });
+    }
+
+    updateMapLabels(1);
+  }
+
+  function updateMapLabels(zoomK = 1) {
+    if (!mapLabelsG || !path) return;
+
+    const minArea =
+      zoomK < 1.6 ? 5600 :
+      zoomK < 2.6 ? 2500 :
+      zoomK < 4 ? 1100 : 280;
+
+    const maxLabels =
+      zoomK < 1.6 ? 26 :
+      zoomK < 2.6 ? 46 :
+      zoomK < 4 ? 80 : 140;
+
+    const rows = mapCountryFeatures
+      .map((feature) => {
+        const area = areaFromFeature(feature);
+        const centroid = mapCountryCentroids.get(area);
+        const geomArea = path.area(feature);
+        return {
+          area,
+          geomArea,
+          cx: centroid?.[0],
+          cy: centroid?.[1],
+        };
+      })
+      .filter((d) => d.area && isFinite(d.cx) && isFinite(d.cy) && d.geomArea >= minArea)
+      .sort((a, b) => d3.descending(a.geomArea, b.geomArea))
+      .slice(0, maxLabels);
+
+    const labels = mapLabelsG
+      .selectAll("g.mapLabel")
+      .data(rows, (d) => d.area);
+
+    const labelsEnter = labels
+      .enter()
+      .append("g")
+      .attr("class", "mapLabel");
+
+    labelsEnter.append("circle").attr("class", "map-label-dot");
+    labelsEnter.append("text").attr("class", "map-label-text");
+
+    const merged = labelsEnter
+      .merge(labels)
+      .attr("transform", (d) => `translate(${d.cx},${d.cy})`);
+
+    merged.select("circle")
+      .attr("r", (d) => (d.geomArea < 1100 ? Math.max(0.8, 1.8 / zoomK) : 0))
+      .style("display", (d) => (d.geomArea < 1100 ? null : "none"));
+
+    merged.select("text")
+      .text((d) => truncateLabel(d.area, 18))
+      .attr("x", (d) => (d.geomArea < 1100 ? 3.6 / zoomK : 0))
+      .attr("y", (d) => (d.geomArea < 1100 ? -2.4 / zoomK : 0))
+      .attr("text-anchor", (d) => (d.geomArea < 1100 ? "start" : "middle"))
+      .attr("font-size", `${Math.max(2.6, 10 / zoomK)}px`)
+      .attr("fill", (d) =>
+        state.selectedCountries.includes(d.area) ? "#0f172a" : "#334155"
+      );
+
+    labels.exit().remove();
   }
 
   function renderMap() {
+    if (mapMetaItem) mapMetaItem.textContent = state.item || "—";
+    if (mapMetaElement) mapMetaElement.textContent = state.element || "—";
+    if (mapMetaYear) mapMetaYear.textContent = state.year || "—";
+
     const vals = [];
     for (const area of areasSet) {
       if (!isCountryArea(area)) continue;
@@ -522,6 +665,8 @@ document.addEventListener("DOMContentLoaded", function () {
           return state.selectedCountries.includes(area) ? 2 : 0.8;
         });
     }
+
+    updateMapLabels(mapCurrentZoom);
 
     const elemDefs = [
       { el: "Production",     r: 46,  g: 204, b: 113, label: "Production" },
@@ -646,8 +791,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
-    const maxRowsByHeight = Math.max(6, Math.floor(innerH / 16));
-    const visibleRows = rows.slice(0, maxRowsByHeight);
+    const visibleRows = rows;
 
     const g = svg
       .append("g")
@@ -965,7 +1109,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const allValues = allSeries.flatMap(s => s.data.map(d => d.value));
     const globalYExtent = d3.extent(allValues);
 
-    const margin = { top: 18, right: 140, bottom: 42, left: 60 };
+    const margin = { top: 18, right: 140, bottom: 70, left: 60 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
@@ -1015,12 +1159,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
-      .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format("d")))
+      .call(d3.axisBottom(x).ticks(10).tickFormat(d3.format("d")))
       .call(styleAxis);
+
+    // Rotation des labels des années pour meilleure lisibilité
+    xAxis.selectAll("text")
+      .attr("transform", "rotate(-45)")
+      .attr("text-anchor", "end")
+      .attr("dx", "-0.5em")
+      .attr("dy", "0.15em");
+
+    xAxis.append("line")
+      .attr("x1", 0)
+      .attr("x2", innerW)
+      .attr("y1", 0)
+      .attr("y2", 0)
+      .attr("stroke", "#cbd5e1")
+      .attr("stroke-width", 1.5);
     
     xAxis.append("text")
       .attr("x", innerW / 2)
-      .attr("y", 32)
+      .attr("y", 50)
       .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
       .attr("font-size", 11)
@@ -1028,8 +1187,20 @@ document.addEventListener("DOMContentLoaded", function () {
       .text("Année");
 
     const yAxis = g.append("g")
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format("~s")))
+      .call(d3.axisLeft(y).ticks(6).tickFormat(d3.format("~s")))
       .call(styleAxis);
+
+    g.append("g")
+      .attr("class", "grid")
+      .call(d3.axisLeft(y)
+        .ticks(6)
+        .tickSize(-innerW)
+        .tickFormat("")
+      )
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 0.8)
+      .attr("stroke-dasharray", "3,3")
+      .attr("opacity", 0.5);
 
     yAxis.append("text")
       .attr("x", -innerH / 2)
@@ -1039,7 +1210,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("fill", "#64748b")
       .attr("font-size", 11)
       .attr("font-weight", "600")
-      .text(state.element);
+      .text(`${state.element} (${units.get(`${state.item}|${state.element}`) || "valeur"})`);
 
     // Afficher un point pour l'année actuelle sur chaque ligne
     allSeries.forEach((series) => {
@@ -1092,7 +1263,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // =========================
   // COUNTRY PAGE
   // =========================
-  function selectCountry(area) {
+  function selectCountry(area, options = {}) {
     // Toggle: ajouter ou retirer le pays de la sélection
     const index = state.selectedCountries.indexOf(area);
     if (index === -1) {
@@ -1112,6 +1283,10 @@ document.addEventListener("DOMContentLoaded", function () {
     renderMap();
     renderScatter();
     renderTop();
+
+    if (options.scrollToLower && !pageDashboard.classList.contains("hidden") && dashboardLowerStart) {
+      dashboardLowerStart.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function renderCountryPage() {
@@ -1126,6 +1301,7 @@ document.addEventListener("DOMContentLoaded", function () {
     countryName.textContent = area;
     countryMeta.textContent = `${state.item} • ${state.year}`;
     cropBreakdownMeta.textContent = `${state.element} • ${state.year}`;
+    if (cropTrendMeta) cropTrendMeta.textContent = `${state.element} • ${yearSlider.min}–${yearSlider.max}`;
 
     const prod = byKey.get(key(area, state.item, "Production", state.year));
     const ar = byKey.get(key(area, state.item, "Area harvested", state.year));
@@ -1139,9 +1315,8 @@ document.addEventListener("DOMContentLoaded", function () {
     kpiAreaUnit.textContent = units.get(`${state.item}|Area harvested`) || "ha";
     kpiYieldUnit.textContent = units.get(`${state.item}|Yield`) || "kg/ha";
 
-    renderCountryBars(area);
-    renderSparklines(area);
     renderCropBreakdown(area);
+    renderCropTrends(area);
   }
 
   function renderCountryBars(area) {
@@ -1373,7 +1548,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const margin = { top: 18, right: 14, bottom: 45, left: 140 };
+    const margin = { top: 18, right: 14, bottom: 95, left: 56 };
     const innerW = w - margin.left - margin.right;
     const innerH = h - margin.top - margin.bottom;
 
@@ -1382,32 +1557,202 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
     const x = d3
-      .scaleLinear()
-      .domain([0, d3.max(rows, (d) => d.value) || 1])
-      .range([0, innerW]);
-
-    const y = d3
       .scaleBand()
       .domain(rows.map((d) => d.item))
-      .range([0, innerH])
-      .padding(0.15);
+      .range([0, innerW])
+      .padding(0.2);
 
-    g.append("g")
+    const y = d3
+      .scaleLinear()
+      .domain([0, d3.max(rows, (d) => d.value) || 1])
+      .nice()
+      .range([innerH, 0]);
+
+    const xAxis = g.append("g")
       .attr("transform", `translate(0,${innerH})`)
-      .call(d3.axisBottom(x).ticks(4).tickFormat(d3.format("~s")))
+      .call(d3.axisBottom(x).tickSize(0).tickFormat((name) => truncateLabel(name, 18)))
       .call(styleAxis);
 
-    g.append("g").call(d3.axisLeft(y).tickSize(0)).call(styleAxis);
+    xAxis.selectAll("text")
+      .attr("transform", "rotate(-35)")
+      .style("text-anchor", "end")
+      .attr("dx", "-0.55em")
+      .attr("dy", "0.35em");
+
+    g.append("g")
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s")))
+      .call(styleAxis);
+
+    const unit = units.get(`${state.item}|${state.element}`) || "valeur";
+    g.append("text")
+      .attr("x", -innerH / 2)
+      .attr("y", -42)
+      .attr("transform", "rotate(-90)")
+      .attr("fill", "#64748b")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
+      .text(`${state.element} (${unit})`);
 
     g.selectAll("rect")
       .data(rows)
       .join("rect")
-      .attr("x", 0)
-      .attr("y", (d) => y(d.item))
-      .attr("height", y.bandwidth())
-      .attr("width", (d) => x(d.value))
+      .attr("x", (d) => x(d.item))
+      .attr("y", (d) => y(d.value))
+      .attr("width", x.bandwidth())
+      .attr("height", (d) => innerH - y(d.value))
       .attr("fill", "rgba(37,99,235,.55)")
       .attr("rx", 6);
+  }
+
+  function renderCropTrends(area) {
+    if (!svgCropLines.node()) return;
+
+    const w = svgCropLines.node().clientWidth || 600;
+    const h = svgCropLines.node().clientHeight || 320;
+    svgCropLines.attr("viewBox", `0 0 ${w} ${h}`);
+    svgCropLines.selectAll("*").remove();
+
+    const years = d3.range(+yearSlider.min, +yearSlider.max + 1);
+    const items = Array.from(itemsSet).sort(d3.ascending);
+
+    const rankedItems = items
+      .map((it) => ({
+        item: it,
+        current: byKey.get(key(area, it, state.element, state.year)),
+      }))
+      .filter((d) => d.current != null && !isNaN(d.current))
+      .sort((a, b) => d3.descending(a.current, b.current))
+      .slice(0, 8)
+      .map((d) => d.item);
+
+    const series = rankedItems
+      .map((it) => ({
+        item: it,
+        values: years
+          .map((yr) => ({
+            year: yr,
+            value: byKey.get(key(area, it, state.element, yr)),
+          }))
+          .filter((d) => d.value != null && !isNaN(d.value)),
+      }))
+      .filter((s) => s.values.length > 0);
+
+    if (series.length === 0) {
+      svgCropLines
+        .append("text")
+        .attr("x", 20)
+        .attr("y", 40)
+        .attr("fill", "#94a3b8")
+        .attr("font-size", 13)
+        .text("Aucune série disponible pour les cultures de ce pays.");
+      return;
+    }
+
+    const margin = { top: 18, right: 150, bottom: 45, left: 62 };
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+
+    const g = svgCropLines
+      .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear()
+      .domain([+yearSlider.min, +yearSlider.max])
+      .range([0, innerW]);
+
+    const allValues = series.flatMap((s) => s.values.map((d) => d.value));
+    const y = d3.scaleLinear()
+      .domain(d3.extent(allValues))
+      .nice()
+      .range([innerH, 0]);
+
+    const color = d3.scaleOrdinal()
+      .domain(series.map((s) => s.item))
+      .range(CROP_COLORS_PAL);
+
+    const line = d3.line()
+      .x((d) => x(d.year))
+      .y((d) => y(d.value));
+
+    g.append("g")
+      .attr("transform", `translate(0,${innerH})`)
+      .call(d3.axisBottom(x).ticks(8).tickFormat(d3.format("d")))
+      .call(styleAxis);
+
+    g.append("g")
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s")))
+      .call(styleAxis);
+
+    g.append("text")
+      .attr("x", innerW / 2)
+      .attr("y", innerH + 34)
+      .attr("fill", "#64748b")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
+      .text("Année");
+
+    const unit = units.get(`${state.item}|${state.element}`) || "valeur";
+    g.append("text")
+      .attr("x", -innerH / 2)
+      .attr("y", -44)
+      .attr("transform", "rotate(-90)")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#64748b")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
+      .text(`${state.element} (${unit})`);
+
+    series.forEach((s) => {
+      g.append("path")
+        .datum(s.values)
+        .attr("fill", "none")
+        .attr("stroke", color(s.item))
+        .attr("stroke-width", 2.1)
+        .attr("d", line);
+
+      const cur = s.values.find((d) => d.year === state.year);
+      if (cur) {
+        g.append("circle")
+          .attr("cx", x(cur.year))
+          .attr("cy", y(cur.value))
+          .attr("r", 3.5)
+          .attr("fill", color(s.item))
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 1.5);
+      }
+    });
+
+    const legend = svgCropLines
+      .append("g")
+      .attr("transform", `translate(${w - 142}, 24)`);
+
+    legend.append("text")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("fill", "#94a3b8")
+      .attr("font-size", 10)
+      .attr("font-weight", "700")
+      .text("Cultures");
+
+    series.forEach((s, i) => {
+      const yPos = 18 + i * 18;
+      legend.append("line")
+        .attr("x1", 0)
+        .attr("x2", 16)
+        .attr("y1", yPos)
+        .attr("y2", yPos)
+        .attr("stroke", color(s.item))
+        .attr("stroke-width", 2.1);
+
+      legend.append("text")
+        .attr("x", 22)
+        .attr("y", yPos + 4)
+        .attr("fill", "#475569")
+        .attr("font-size", 10)
+        .text(truncateLabel(s.item, 16));
+    });
   }
 
   // =========================
@@ -1507,7 +1852,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="donutDot" style="background:${d.color}"></div>
           <div class="donutLegendName">${d.item}</div>
           <div class="donutLegendPct">${pct}%</div>
-          <div class="donutLegendVal">${formatNumber(d.value)}</div>
+          <div class="donutLegendVal">${formatNumber(d.value)} ${unit}</div>
         </div>`;
       }).join("");
     }
@@ -1575,7 +1920,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="donutDot" style="background:${d.color}"></div>
           <div class="donutLegendName">${d.cont}</div>
           <div class="donutLegendPct">${pct}%</div>
-          <div class="donutLegendVal">${formatNumber(d.value)}</div>
+          <div class="donutLegendVal">${formatNumber(d.value)} ${unit}</div>
         </div>`;
       }).join("");
     }

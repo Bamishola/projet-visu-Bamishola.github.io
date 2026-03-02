@@ -51,29 +51,35 @@
 
       <label>Top N: <span id="lblTopN"></span></label>
       <input id="topNSlider" type="range" min="5" max="30" step="1" />
-
-      <!-- Légende couleurs : 3 échelles simultanées -->
-      <div class="controlSeparator"></div>
-      <div class="legendPanel">
-        <div class="legendPanelTitle">Légende carte</div>
-        <div id="mapLegend"></div>
-      </div>
     </aside>
 
     <section class="grid">
       <div class="card card-map">
         <div class="card-title">Carte mondiale</div>
+        <div class="card-subtitle">Intensité de <span id="mapMetaElement">Production</span> pour <span id="mapMetaItem">—</span> en <span id="mapMetaYear">—</span> · Cliquez pour sélectionner</div>
+        <div class="mapZoomControls">
+          <button id="btnMapZoomIn" class="btn ghost mapZoomBtn">+</button>
+          <button id="btnMapZoomOut" class="btn ghost mapZoomBtn">−</button>
+          <button id="btnMapZoomReset" class="btn ghost mapZoomBtn">Reset</button>
+        </div>
+        <!-- Légende couleurs : 3 échelles simultanées -->
+        <div class="legendPanel">
+          <div class="legendPanelTitle">Légende carte</div>
+          <div id="mapLegend"></div>
+        </div>
         <svg id="svgMap"></svg>
       </div>
 
-      <div class="card card-top">
+      <div id="dashboardLowerStart" class="card card-top">
         <div class="top-split">
           <div class="top-panel">
             <div class="card-title">Top pays</div>
+            <div class="card-subtitle">Classement des pays (année sélectionnée)</div>
             <svg id="svgTopCountries"></svg>
           </div>
           <div class="top-panel">
             <div class="card-title">Top continents</div>
+            <div class="card-subtitle">Classement des continents (année sélectionnée)</div>
             <svg id="svgTopContinents"></svg>
           </div>
         </div>
@@ -90,7 +96,7 @@
           <div class="card-title" style="margin:0">Comparaison temporelle</div>
           <button id="btnClearSelection" class="btn ghost" style="padding:3px 8px; font-size:11px; flex:none">Effacer</button>
         </div>
-        <div id="miniTitle" class="card-subtitle">Sélectionnez un pays sur la carte pour commencer</div>
+        <div id="miniTitle" class="card-subtitle">Série annuelle de l’indicateur sélectionné</div>
         <svg id="svgMiniLine"></svg>
       </div>
     </section>
@@ -128,22 +134,16 @@
         </div>
       </div>
 
-      <div class="card detailBars">
-        <div class="card-title">Rang mondial — % du maximum (année sélectionnée)</div>
-        <div class="card-subtitle">Chaque indicateur est normalisé par rapport au pays leader mondial</div>
-        <svg id="svgBars"></svg>
-      </div>
-
-      <div class="card smallMultiples">
-        <div class="card-title">Évolution historique (1961–2024)</div>
-        <div class="card-subtitle">Série temporelle par indicateur</div>
-        <svg id="svgSparklines"></svg>
-      </div>
-
       <div class="card cropBreakdown">
         <div class="card-title">Répartition par culture</div>
-        <div class="card-subtitle">Toutes les cultures · <span id="cropBreakdownMeta"></span></div>
+        <div class="card-subtitle">Comparaison par culture (année sélectionnée) · <span id="cropBreakdownMeta"></span></div>
         <svg id="svgCropBars"></svg>
+      </div>
+
+      <div class="card cropTrends">
+        <div class="card-title">Évolution par culture</div>
+        <div class="card-subtitle">Courbes annuelles (couleurs distinctes) · <span id="cropTrendMeta"></span></div>
+        <svg id="svgCropLines"></svg>
       </div>
     </section>
   </main>
