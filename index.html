@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AgriShift Atlas</title>
+  <title>PRODMONDE</title>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://unpkg.com/topojson-client@3"></script>
@@ -13,17 +13,18 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="brand-title">Cartographie mondiale des grandes cultures (1961–2024)</div>
-      <div class="brand-sub">Analyse FAOSTAT par Bamishola LOKE | École Centrale Lyon</div>
+      <div class="brand-title">PRODMONDE</div>
+      <div class="brand-sub">Cartographie mondiale des grandes cultures (1961–2024) · Bamishola LOKE | École Centrale Lyon</div>
     </div>
 
     <nav class="nav">
       <button id="btnDashboard" class="navbtn active">Dashboard</button>
-      <button id="btnCountry" class="navbtn">Détails pays</button>
+      <button id="btnCountry"   class="navbtn">Détails pays</button>
+      <button id="btnStats"     class="navbtn">Statistiques</button>
     </nav>
   </header>
 
-  <!-- PAGE 1 -->
+  <!-- PAGE 1 : DASHBOARD -->
   <main id="pageDashboard" class="page">
     <aside class="panel controls">
       <h2>Contrôles</h2>
@@ -38,29 +39,31 @@
       <input id="yearSlider" type="range" min="1980" max="2024" step="1" value="1980" />
 
       <div class="row">
-        <button id="btnPlay" class="btn">▶ Play</button>
+        <button id="btnPlay"  class="btn">▶ Play</button>
         <button id="btnReset" class="btn ghost">Reset</button>
       </div>
 
-      <label>Échelle</label>
+      <label>Échelle carte</label>
       <select id="selScale">
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
+        <option value="linear">Linéaire</option>
+        <option value="log">Logarithmique</option>
       </select>
 
       <label>Top N: <span id="lblTopN"></span></label>
       <input id="topNSlider" type="range" min="5" max="30" step="1" />
 
-      <div class="hint">
-        💡 Cliquez sur un pays pour l'ajouter à la comparaison (max 5). Cliquez à nouveau pour le retirer. La série temporelle affiche tous les pays sélectionnés.
+      <!-- Légende couleurs : 3 échelles simultanées -->
+      <div class="controlSeparator"></div>
+      <div class="legendPanel">
+        <div class="legendPanelTitle">Légende carte</div>
+        <div id="mapLegend"></div>
       </div>
     </aside>
 
     <section class="grid">
       <div class="card card-map">
-        <div class="card-title">Carte</div>
+        <div class="card-title">Carte mondiale</div>
         <svg id="svgMap"></svg>
-        <div id="mapLegend" class="legend"></div>
       </div>
 
       <div class="card card-top">
@@ -77,68 +80,104 @@
       </div>
 
       <div class="card card-scatter">
-        <div class="card-title">Intensification (Surface vs Rendement)</div>
-        <div class="card-subtitle">X = Surface récoltée (ha), Y = Rendement (kg/ha), taille = Production (t) · Cliquez pour sélectionner</div>
+        <div class="card-title">Intensification agricole</div>
+        <div class="card-subtitle">X = Surface récoltée (ha) · Y = Rendement (kg/ha) · Taille = Production (t) · Cliquez pour sélectionner</div>
         <svg id="svgScatter"></svg>
       </div>
 
       <div class="card card-mini">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+        <div class="cardMiniHeader">
           <div class="card-title" style="margin:0">Comparaison temporelle</div>
-          <button id="btnClearSelection" class="btn ghost" style="padding:4px 8px; font-size:11px; flex:none">Effacer</button>
+          <button id="btnClearSelection" class="btn ghost" style="padding:3px 8px; font-size:11px; flex:none">Effacer</button>
         </div>
-        <div id="miniTitle" class="card-subtitle">Aucun pays sélectionné (cliquez pour ajouter)</div>
+        <div id="miniTitle" class="card-subtitle">Sélectionnez un pays sur la carte pour commencer</div>
         <svg id="svgMiniLine"></svg>
       </div>
     </section>
   </main>
 
-  <!-- PAGE 2 -->
+  <!-- PAGE 2 : DÉTAILS PAYS -->
   <main id="pageCountry" class="page hidden">
     <section class="countryHeader">
       <button id="btnBack" class="btn ghost">← Retour</button>
       <div>
         <div id="countryName" class="countryTitle">Aucun pays sélectionné</div>
-        <div id="countryMeta" class="countryMeta">Clique un pays sur la page Dashboard.</div>
+        <div id="countryMeta" class="countryMeta">Sélectionnez un pays sur la carte.</div>
       </div>
     </section>
 
     <section class="countryGrid">
       <div class="card kpis">
-        <div class="card-title">KPIs (année sélectionnée)</div>
+        <div class="card-title">Indicateurs clés — année sélectionnée</div>
         <div class="kpiRow">
-          <div class="kpi">
+          <div class="kpi kpi-prod">
             <div class="kpiLabel">Production</div>
-            <div id="kpiProd" class="kpiValue">—</div>
+            <div id="kpiProd"     class="kpiValue">—</div>
             <div id="kpiProdUnit" class="kpiUnit"></div>
           </div>
-          <div class="kpi">
-            <div class="kpiLabel">Surface</div>
-            <div id="kpiArea" class="kpiValue">—</div>
+          <div class="kpi kpi-area">
+            <div class="kpiLabel">Surface récoltée</div>
+            <div id="kpiArea"     class="kpiValue">—</div>
             <div id="kpiAreaUnit" class="kpiUnit"></div>
           </div>
-          <div class="kpi">
+          <div class="kpi kpi-yield">
             <div class="kpiLabel">Rendement</div>
-            <div id="kpiYield" class="kpiValue">—</div>
+            <div id="kpiYield"     class="kpiValue">—</div>
             <div id="kpiYieldUnit" class="kpiUnit"></div>
           </div>
         </div>
       </div>
 
       <div class="card detailBars">
-        <div class="card-title">Comparaison des 3 indicateurs (année sélectionnée)</div>
+        <div class="card-title">Rang mondial — % du maximum (année sélectionnée)</div>
+        <div class="card-subtitle">Chaque indicateur est normalisé par rapport au pays leader mondial</div>
         <svg id="svgBars"></svg>
       </div>
 
       <div class="card smallMultiples">
-        <div class="card-title">Évolution (sparklines) par indicateur</div>
+        <div class="card-title">Évolution historique (1961–2024)</div>
+        <div class="card-subtitle">Série temporelle par indicateur</div>
         <svg id="svgSparklines"></svg>
       </div>
 
       <div class="card cropBreakdown">
-        <div class="card-title">Répartition par culture (optionnel)</div>
-        <div class="card-subtitle">Même année, indicateur choisi</div>
+        <div class="card-title">Répartition par culture</div>
+        <div class="card-subtitle">Toutes les cultures · <span id="cropBreakdownMeta"></span></div>
         <svg id="svgCropBars"></svg>
+      </div>
+    </section>
+  </main>
+
+  <!-- PAGE 3 : STATISTIQUES -->
+  <main id="pageStats" class="page hidden">
+    <section class="statsHeader">
+      <div class="statsTitle">Statistiques mondiales</div>
+      <div id="statsMeta" class="statsMeta">—</div>
+    </section>
+
+    <section class="statsGrid">
+      <div class="card statsCard">
+        <div class="card-title">Répartition par culture</div>
+        <div class="card-subtitle">Part de chaque culture dans le total mondial</div>
+        <div class="donutWrap">
+          <svg id="svgCropDonut"></svg>
+          <div id="cropDonutLegend" class="donutLegend"></div>
+        </div>
+      </div>
+
+      <div class="card statsCard">
+        <div class="card-title">Répartition par continent</div>
+        <div class="card-subtitle">Part de chaque continent dans le total mondial</div>
+        <div class="donutWrap">
+          <svg id="svgContinentDonut"></svg>
+          <div id="continentDonutLegend" class="donutLegend"></div>
+        </div>
+      </div>
+
+      <div class="card statsCardWide">
+        <div class="card-title">Évolution de la part de marché par culture (1961–2024)</div>
+        <div class="card-subtitle">Part relative (%) de chaque culture dans la production mondiale totale</div>
+        <svg id="svgStackedArea"></svg>
       </div>
     </section>
   </main>

@@ -42,44 +42,54 @@ document.addEventListener("DOMContentLoaded", function () {
   const loadingOverlay = $("loadingOverlay");
 
   const pageDashboard = $("#pageDashboard");
-  const pageCountry = $("#pageCountry");
-  const btnDashboard = $("#btnDashboard");
-  const btnCountry = $("#btnCountry");
-  const btnBack = $("#btnBack");
+  const pageCountry   = $("#pageCountry");
+  const pageStats     = $("#pageStats");
+  const btnDashboard  = $("#btnDashboard");
+  const btnCountry    = $("#btnCountry");
+  const btnStats      = $("#btnStats");
+  const btnBack       = $("#btnBack");
 
-  // SVGs
-  const svgMap = d3.select("#svgMap");
-  const svgTopCountries = d3.select("#svgTopCountries");
+  // SVGs — Dashboard
+  const svgMap           = d3.select("#svgMap");
+  const svgTopCountries  = d3.select("#svgTopCountries");
   const svgTopContinents = d3.select("#svgTopContinents");
-  const svgScatter = d3.select("#svgScatter");
-  const svgMiniLine = d3.select("#svgMiniLine");
+  const svgScatter       = d3.select("#svgScatter");
+  const svgMiniLine      = d3.select("#svgMiniLine");
 
-  const svgBars = d3.select("#svgBars");
+  // SVGs — Country page
+  const svgBars       = d3.select("#svgBars");
   const svgSparklines = d3.select("#svgSparklines");
-  const svgCropBars = d3.select("#svgCropBars");
+  const svgCropBars   = d3.select("#svgCropBars");
+
+  // SVGs — Stats page
+  const svgCropDonut      = d3.select("#svgCropDonut");
+  const svgContinentDonut = d3.select("#svgContinentDonut");
+  const svgStackedArea    = d3.select("#svgStackedArea");
 
   // Controls
-  const selItem = $("#selItem");
+  const selItem    = $("#selItem");
   const selElement = $("#selElement");
   const yearSlider = $("#yearSlider");
-  const lblYear = $("#lblYear");
-  const selScale = $("#selScale");
+  const lblYear    = $("#lblYear");
+  const selScale   = $("#selScale");
   const topNSlider = $("#topNSlider");
-  const lblTopN = $("#lblTopN");
+  const lblTopN    = $("#lblTopN");
 
-  const btnPlay = $("#btnPlay");
-  const btnReset = $("#btnReset");
+  const btnPlay           = $("#btnPlay");
+  const btnReset          = $("#btnReset");
   const btnClearSelection = $("#btnClearSelection");
 
   // Detail page labels
-  const countryName = $("#countryName");
-  const countryMeta = $("#countryMeta");
-  const miniTitle = $("#miniTitle");
-  const kpiProd = $("#kpiProd");
-  const kpiArea = $("#kpiArea");
-  const kpiYield = $("#kpiYield");
-  const kpiProdUnit = $("#kpiProdUnit");
-  const kpiAreaUnit = $("#kpiAreaUnit");
+  const countryName      = $("#countryName");
+  const countryMeta      = $("#countryMeta");
+  const cropBreakdownMeta = $("#cropBreakdownMeta");
+  const miniTitle        = $("#miniTitle");
+  const statsMeta        = $("#statsMeta");
+  const kpiProd      = $("#kpiProd");
+  const kpiArea      = $("#kpiArea");
+  const kpiYield     = $("#kpiYield");
+  const kpiProdUnit  = $("#kpiProdUnit");
+  const kpiAreaUnit  = $("#kpiAreaUnit");
   const kpiYieldUnit = $("#kpiYieldUnit");
 
   // Vérification que tous les éléments existent
@@ -128,11 +138,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function navigate(to) {
-    const isDash = to === "dashboard";
-    pageDashboard.classList.toggle("hidden", !isDash);
-    pageCountry.classList.toggle("hidden", isDash);
-    btnDashboard.classList.toggle("active", isDash);
-    btnCountry.classList.toggle("active", !isDash);
+    pageDashboard.classList.toggle("hidden", to !== "dashboard");
+    pageCountry.classList.toggle("hidden",   to !== "country");
+    pageStats.classList.toggle("hidden",     to !== "stats");
+    btnDashboard.classList.toggle("active",  to === "dashboard");
+    btnCountry.classList.toggle("active",    to === "country");
+    btnStats.classList.toggle("active",      to === "stats");
   }
 
   function isLikelyAggregate(areaName) {
@@ -333,6 +344,11 @@ document.addEventListener("DOMContentLoaded", function () {
         navigate("dashboard");
         renderAll();
       });
+
+      btnStats.addEventListener("click", () => {
+        navigate("stats");
+        renderStatsPage();
+      });
       
       btnClearSelection.addEventListener("click", () => {
         state.selectedCountries = [];
@@ -385,6 +401,7 @@ document.addEventListener("DOMContentLoaded", function () {
     renderScatter();
     renderMiniLine();
     if (!pageCountry.classList.contains("hidden")) renderCountryPage();
+    if (!pageStats.classList.contains("hidden"))   renderStatsPage();
   }
 
   // =========================
@@ -446,8 +463,8 @@ document.addEventListener("DOMContentLoaded", function () {
     mapG
       .append("path")
       .attr("d", path({ type: "Sphere" }))
-      .attr("fill", "rgba(203,213,225,.5)")
-      .attr("stroke", "rgba(148,163,184,.3)");
+      .attr("fill", "#e8ecf0")
+      .attr("stroke", "#d1d9e0");
 
     mapCountries = mapG
       .append("g")
@@ -456,8 +473,8 @@ document.addEventListener("DOMContentLoaded", function () {
       .join("path")
       .attr("class", "country")
       .attr("d", path)
-      .attr("fill", "rgba(241,245,249,.8)")
-      .attr("stroke", "rgba(148,163,184,.4)")
+      .attr("fill", "#f8fafc")
+      .attr("stroke", "#cbd5e1")
       .on("mousemove", (e, feature) => {
         const area = areaFromFeature(feature) || "Pays";
         const v = valueFromFeature(feature);
@@ -488,7 +505,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const max = d3.max(vals) ?? 1;
 
     const color = buildColorScale(min, max);
-    const baseRgb = getElementBaseRgb();
 
     if (mapCountries) {
       mapCountries
@@ -498,8 +514,8 @@ document.addEventListener("DOMContentLoaded", function () {
         .attr("stroke", (feature) => {
           const area = areaFromFeature(feature);
           return state.selectedCountries.includes(area)
-            ? "rgba(30,41,59,.8)"
-            : "rgba(148,163,184,.4)";
+            ? "#0f172a"
+            : "#cbd5e1";
         })
         .attr("stroke-width", (feature) => {
           const area = areaFromFeature(feature);
@@ -507,17 +523,29 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    const unit = units.get(`${state.item}|${state.element}`) || "";
-    const legendHTML = `
-      <div style="font-weight:500; margin-bottom:8px; color:rgba(30,41,59,.9); font-size:13px">${state.element}</div>
-      <div style="display:flex; align-items:center; margin-bottom:6px">
-        <div style="height:20px; flex:1; border-radius:4px; border:1px solid rgba(148,163,184,.4); background:linear-gradient(to right, rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.12), rgba(${baseRgb.r},${baseRgb.g},${baseRgb.b},0.95))"></div>
-      </div>
-      <div style="display:flex; justify-content:space-between; font-size:11px; color:rgba(30,41,59,.7)">
-        <span><strong>Min:</strong> ${formatNumber(min)}</span>
-        <span><strong>Max:</strong> ${formatNumber(max)} ${unit}</span>
-      </div>
-    `;
+    const elemDefs = [
+      { el: "Production",     r: 46,  g: 204, b: 113, label: "Production" },
+      { el: "Area harvested", r: 231, g: 76,  b: 60,  label: "Surface" },
+      { el: "Yield",          r: 66,  g: 133, b: 244, label: "Rendement" },
+    ];
+    let legendHTML = "";
+    for (const ed of elemDefs) {
+      const elVals = [];
+      for (const area of areasSet) {
+        if (!isCountryArea(area)) continue;
+        const v = byKey.get(key(area, state.item, ed.el, state.year));
+        if (v != null && !isNaN(v)) elVals.push(v);
+      }
+      const elMin = d3.min(elVals) ?? 0;
+      const elMax = d3.max(elVals) ?? 1;
+      const elUnit = units.get(`${state.item}|${ed.el}`) || "";
+      const isActive = ed.el === state.element;
+      legendHTML += `<div class="legendRow${isActive ? " active" : ""}">
+        <div class="legendRowLabel">${ed.label}</div>
+        <div class="legendBar" style="background:linear-gradient(to right,rgba(${ed.r},${ed.g},${ed.b},0.12),rgba(${ed.r},${ed.g},${ed.b},0.9))"></div>
+        <div class="legendMinMax"><span>${formatNumber(elMin)}</span><span>${formatNumber(elMax)} ${elUnit}</span></div>
+      </div>`;
+    }
     d3.select("#mapLegend").html(legendHTML);
   }
 
@@ -536,7 +564,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .clamp(true);
 
       return (v) => {
-        if (v == null || isNaN(v) || v <= 0) return "rgba(255,255,255,.05)";
+        if (v == null || isNaN(v) || v <= 0) return "#f1f5f9";
         const a = alphaScale(v);
         return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
       };
@@ -550,7 +578,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .clamp(true);
 
     return (v) => {
-      if (v == null || isNaN(v)) return "rgba(255,255,255,.05)";
+      if (v == null || isNaN(v)) return "#f1f5f9";
       const a = alphaScale(v);
       return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
     };
@@ -608,7 +636,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .append("text")
         .attr("x", 12)
         .attr("y", 20)
-        .attr("fill", "rgba(232,238,252,.75)")
+        .attr("fill", "#94a3b8")
         .attr("font-size", 12)
         .text(emptyLabel);
       return;
@@ -644,10 +672,10 @@ document.addEventListener("DOMContentLoaded", function () {
     xAxis.append("text")
       .attr("x", innerW / 2)
       .attr("y", 28)
-      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
       .attr("font-size", 11)
-      .attr("font-weight", "500")
+      .attr("font-weight", "600")
       .text(unit || "Valeur");
 
     g.append("g")
@@ -682,15 +710,15 @@ document.addEventListener("DOMContentLoaded", function () {
         .attr("class", "labelValue")
         .attr("x", (d) => x(d.value) + 6)
         .attr("y", (d) => y(d.area) + y.bandwidth() / 2 + 4)
-        .attr("fill", "rgba(30,41,59,.85)")
+        .attr("fill", "#475569")
         .attr("font-size", 10)
         .text((d) => d3.format("~s")(d.value));
     }
   }
 
   function styleAxis(g) {
-    g.selectAll("path,line").attr("stroke", "rgba(148,163,184,.3)");
-    g.selectAll("text").attr("fill", "rgba(30,41,59,.8)").attr("font-size", 11);
+    g.selectAll("path,line").attr("stroke", "#e2e8f0");
+    g.selectAll("text").attr("fill", "#64748b").attr("font-size", 11);
   }
 
   // =========================
@@ -719,7 +747,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .append("text")
         .attr("x", 20)
         .attr("y", 30)
-        .attr("fill", "rgba(232,238,252,.75)")
+        .attr("fill", "#94a3b8")
         .attr("font-size", 12)
         .text("Pas assez de données (Production + Surface + Rendement) pour cette culture/année.");
       return;
@@ -758,24 +786,24 @@ document.addEventListener("DOMContentLoaded", function () {
     xAxis.append("text")
       .attr("x", innerW / 2)
       .attr("y", 42)
-      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
-      .attr("font-size", 12)
-      .attr("font-weight", "500")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
       .text("Surface récoltée (ha) [log]");
 
     const yAxis = g.append("g")
       .call(d3.axisLeft(y).ticks(5, "~s"))
       .call(styleAxis);
-    
+
     yAxis.append("text")
       .attr("x", -innerH / 2)
       .attr("y", -58)
       .attr("transform", "rotate(-90)")
       .attr("text-anchor", "middle")
-      .attr("fill", "rgba(30,41,59,.8)")
-      .attr("font-size", 12)
-      .attr("font-weight", "500")
+      .attr("fill", "#64748b")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
       .text("Rendement (kg/ha) [log]");
 
     // Légende pour les bulles (Production)
@@ -783,15 +811,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const legendY = -8;
     const legend = g.append("g")
       .attr("transform", `translate(${legendX},${legendY})`);
-    
+
     legend.append("text")
       .attr("x", 0)
       .attr("y", 0)
-      .attr("fill", "rgba(30,41,59,.7)")
+      .attr("fill", "#94a3b8")
       .attr("font-size", 10)
-      .attr("font-weight", "500")
+      .attr("font-weight", "600")
       .text("Taille = Production");
-    
+
     const bubbleSizes = [r.domain()[0], (r.domain()[0] + r.domain()[1]) / 2, r.domain()[1]];
     const bubbleLabels = bubbleSizes.map((v) => formatNumber(v) + "t");
     [0, 1, 2].forEach((i) => {
@@ -799,12 +827,12 @@ document.addEventListener("DOMContentLoaded", function () {
         .attr("cx", 8)
         .attr("cy", 14 + i * 14)
         .attr("r", r(bubbleSizes[i]))
-        .attr("fill", "rgba(37,99,235,.4)")
-        .attr("stroke", "rgba(148,163,184,.3)");
+        .attr("fill", "rgba(37,99,235,.3)")
+        .attr("stroke", "#e2e8f0");
       legend.append("text")
         .attr("x", 20)
         .attr("y", 14 + i * 14 + 3)
-        .attr("fill", "rgba(30,41,59,.7)")
+        .attr("fill", "#94a3b8")
         .attr("font-size", 9)
         .text(bubbleLabels[i]);
     });
@@ -835,8 +863,8 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("cx", (d) => x(d.areaHarvested))
       .attr("cy", (d) => y(d.yield))
       .attr("r", (d) => r(d.production))
-      .attr("fill", "rgba(148,163,184,.35)")
-      .attr("stroke", "rgba(148,163,184,.5)")
+      .attr("fill", "#dde3eb")
+      .attr("stroke", "#c5cdd8")
       .attr("stroke-width", 0.5)
       .style("cursor", "pointer")
       .on("mousemove", (e, d) => {
@@ -993,24 +1021,24 @@ document.addEventListener("DOMContentLoaded", function () {
     xAxis.append("text")
       .attr("x", innerW / 2)
       .attr("y", 32)
-      .attr("fill", "rgba(30,41,59,.8)")
+      .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
-      .attr("font-size", 12)
-      .attr("font-weight", "500")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
       .text("Année");
 
     const yAxis = g.append("g")
       .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format("~s")))
       .call(styleAxis);
-    
+
     yAxis.append("text")
       .attr("x", -innerH / 2)
       .attr("y", -45)
       .attr("transform", "rotate(-90)")
       .attr("text-anchor", "middle")
-      .attr("fill", "rgba(30,41,59,.8)")
-      .attr("font-size", 12)
-      .attr("font-weight", "500")
+      .attr("fill", "#64748b")
+      .attr("font-size", 11)
+      .attr("font-weight", "600")
       .text(state.element);
 
     // Afficher un point pour l'année actuelle sur chaque ligne
@@ -1035,27 +1063,28 @@ document.addEventListener("DOMContentLoaded", function () {
     legend.append("text")
       .attr("x", 0)
       .attr("y", 0)
-      .attr("font-size", 11)
-      .attr("font-weight", "600")
-      .attr("fill", "rgba(30,41,59,.8)")
-      .text("Pays sélectionnés:");
+      .attr("font-size", 10)
+      .attr("font-weight", "700")
+      .attr("fill", "#94a3b8")
+      .attr("text-transform", "uppercase")
+      .text("Pays sélectionnés");
 
     allSeries.forEach((series, i) => {
-      const yPos = 20 + i * 20;
-      
+      const yPos = 18 + i * 20;
+
       legend.append("line")
         .attr("x1", 0)
-        .attr("x2", 20)
+        .attr("x2", 18)
         .attr("y1", yPos)
         .attr("y2", yPos)
         .attr("stroke", colorScale(series.area))
         .attr("stroke-width", 2.5);
-      
+
       legend.append("text")
-        .attr("x", 25)
+        .attr("x", 24)
         .attr("y", yPos + 4)
         .attr("font-size", 10)
-        .attr("fill", "rgba(30,41,59,.75)")
+        .attr("fill", "#475569")
         .text(truncateLabel(series.area, 14));
     });
   }
@@ -1096,6 +1125,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     countryName.textContent = area;
     countryMeta.textContent = `${state.item} • ${state.year}`;
+    cropBreakdownMeta.textContent = `${state.element} • ${state.year}`;
 
     const prod = byKey.get(key(area, state.item, "Production", state.year));
     const ar = byKey.get(key(area, state.item, "Area harvested", state.year));
@@ -1183,7 +1213,7 @@ document.addEventListener("DOMContentLoaded", function () {
     g.append("line")
       .attr("x1", x(100)).attr("x2", x(100))
       .attr("y1", -4).attr("y2", innerH)
-      .attr("stroke", "rgba(148,163,184,.35)")
+      .attr("stroke", "#e2e8f0")
       .attr("stroke-width", 1)
       .attr("stroke-dasharray", "4,3");
 
@@ -1195,10 +1225,10 @@ document.addEventListener("DOMContentLoaded", function () {
     xAxis.append("text")
       .attr("x", innerW / 2)
       .attr("y", 30)
-      .attr("fill", "rgba(30,41,59,.75)")
+      .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
       .attr("font-size", 11)
-      .attr("font-weight", "500")
+      .attr("font-weight", "600")
       .text("% du maximum mondial (100 % = leader mondial)");
 
     g.append("g").call(d3.axisLeft(y).tickSize(0)).call(styleAxis);
@@ -1219,7 +1249,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("class", "v")
       .attr("x", (d) => x(Math.max(0, d.pct)) + 6)
       .attr("y", (d) => y(d.k) + y.bandwidth() / 2 + 4)
-      .attr("fill", "rgba(30,41,59,.85)")
+      .attr("fill", "#475569")
       .attr("font-size", 10)
       .text((d) =>
         d.v != null
@@ -1268,15 +1298,16 @@ document.addEventListener("DOMContentLoaded", function () {
         .attr("x", -12)
         .attr("y", y0 + rowH / 2 + 4)
         .attr("text-anchor", "end")
-        .attr("fill", "rgba(30,41,59,.78)")
-        .attr("font-size", 12)
+        .attr("fill", "#475569")
+        .attr("font-size", 11)
+        .attr("font-weight", "600")
         .text(s.name);
 
       if (s.values.length === 0) {
         g.append("text")
           .attr("x", 0)
           .attr("y", y0 + rowH / 2 + 4)
-          .attr("fill", "rgba(30,41,59,.3)")
+          .attr("fill", "#94a3b8")
           .attr("font-size", 11)
           .text("— aucune donnée —");
         continue;
@@ -1298,7 +1329,7 @@ document.addEventListener("DOMContentLoaded", function () {
       g.append("path")
         .datum(s.values)
         .attr("fill", "none")
-        .attr("stroke", "rgba(91,124,250,.95)")
+        .attr("stroke", "#2563eb")
         .attr("stroke-width", 2)
         .attr("d", line);
 
@@ -1308,7 +1339,9 @@ document.addEventListener("DOMContentLoaded", function () {
           .attr("cx", x(cur.year))
           .attr("cy", y(cur.value))
           .attr("r", 3.8)
-          .attr("fill", "rgba(232,238,252,.95)");
+          .attr("fill", "#0f172a")
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 1.5);
       }
     }
   }
@@ -1334,7 +1367,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .append("text")
         .attr("x", 20)
         .attr("y", 40)
-        .attr("fill", "rgba(30,41,59,.4)")
+        .attr("fill", "#94a3b8")
         .attr("font-size", 13)
         .text("Aucune donnée de répartition disponible pour cette sélection.");
       return;
@@ -1373,7 +1406,281 @@ document.addEventListener("DOMContentLoaded", function () {
       .attr("y", (d) => y(d.item))
       .attr("height", y.bandwidth())
       .attr("width", (d) => x(d.value))
-      .attr("fill", "rgba(91,124,250,.55)")
+      .attr("fill", "rgba(37,99,235,.55)")
       .attr("rx", 6);
+  }
+
+  // =========================
+  // STATS PAGE
+  // =========================
+  const CROP_COLORS_PAL = [
+    "#2563eb","#16a34a","#dc2626","#d97706","#7c3aed",
+    "#0891b2","#db2777","#ea580c","#65a30d","#0d9488",
+  ];
+  const CONTINENT_COLORS = {
+    "Africa":   "#f59e0b",
+    "Americas": "#3b82f6",
+    "Asia":     "#ef4444",
+    "Europe":   "#8b5cf6",
+    "Oceania":  "#10b981",
+  };
+
+  function getWorldValue(item, element, year) {
+    const worldVal = byKey.get(key("World", item, element, year));
+    if (worldVal != null && !isNaN(worldVal) && worldVal > 0) return worldVal;
+    let sum = 0, hasData = false;
+    for (const area of areasSet) {
+      if (!isCountryArea(area)) continue;
+      const v = byKey.get(key(area, item, element, year));
+      if (v != null && !isNaN(v) && v > 0) { sum += v; hasData = true; }
+    }
+    return hasData ? sum : null;
+  }
+
+  function renderStatsPage() {
+    statsMeta.textContent = `${state.item} · ${state.element} · ${state.year}`;
+    renderCropDonut();
+    renderContinentDonut();
+    renderStackedArea();
+  }
+
+  function renderCropDonut() {
+    if (!svgCropDonut.node()) return;
+    svgCropDonut.selectAll("*").remove();
+
+    const items = Array.from(itemsSet).sort(d3.ascending);
+    const data = items
+      .map((item, i) => ({
+        item,
+        value: getWorldValue(item, state.element, state.year),
+        color: CROP_COLORS_PAL[i % CROP_COLORS_PAL.length],
+      }))
+      .filter((d) => d.value != null && d.value > 0);
+
+    if (data.length === 0) {
+      svgCropDonut.append("text").attr("x", 10).attr("y", 30)
+        .attr("fill", "#94a3b8").attr("font-size", 13).text("Aucune donnée.");
+      return;
+    }
+
+    const total = d3.sum(data, (d) => d.value);
+    const unit = units.get(`${state.item}|${state.element}`) || "";
+    const w = svgCropDonut.node().clientWidth || 260;
+    const h = svgCropDonut.node().clientHeight || 300;
+    svgCropDonut.attr("viewBox", `0 0 ${w} ${h}`);
+
+    const radius = Math.min(w, h) / 2 * 0.88;
+    const innerRadius = radius * 0.55;
+    const cx = w / 2, cy = h / 2;
+
+    const pie = d3.pie().value((d) => d.value).sort(null);
+    const arc = d3.arc().innerRadius(innerRadius).outerRadius(radius);
+    const arcHov = d3.arc().innerRadius(innerRadius).outerRadius(radius * 1.07);
+
+    const g = svgCropDonut.append("g").attr("transform", `translate(${cx},${cy})`);
+
+    g.selectAll("path")
+      .data(pie(data))
+      .join("path")
+      .attr("d", arc)
+      .attr("fill", (d) => d.data.color)
+      .attr("stroke", "white")
+      .attr("stroke-width", 2)
+      .style("cursor", "pointer")
+      .on("mousemove", (e, d) => {
+        d3.select(e.currentTarget).attr("d", arcHov);
+        const pct = ((d.data.value / total) * 100).toFixed(1);
+        showTooltip(`<b>${d.data.item}</b><br>${formatNumber(d.data.value)} ${unit}<br>${pct}%`, e.clientX, e.clientY);
+      })
+      .on("mouseleave", (e) => { d3.select(e.currentTarget).attr("d", arc); hideTooltip(); });
+
+    g.append("text").attr("text-anchor", "middle").attr("y", -8)
+      .attr("font-size", 14).attr("font-weight", "700").attr("fill", "#0f172a").text(state.year);
+    g.append("text").attr("text-anchor", "middle").attr("y", 10)
+      .attr("font-size", 10).attr("fill", "#64748b").text(state.element.slice(0, 12));
+
+    const legendDiv = document.getElementById("cropDonutLegend");
+    if (legendDiv) {
+      legendDiv.innerHTML = data.map((d) => {
+        const pct = ((d.value / total) * 100).toFixed(1);
+        return `<div class="donutLegendItem">
+          <div class="donutDot" style="background:${d.color}"></div>
+          <div class="donutLegendName">${d.item}</div>
+          <div class="donutLegendPct">${pct}%</div>
+          <div class="donutLegendVal">${formatNumber(d.value)}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  function renderContinentDonut() {
+    if (!svgContinentDonut.node()) return;
+    svgContinentDonut.selectAll("*").remove();
+
+    const continents = ["Africa", "Americas", "Asia", "Europe", "Oceania"];
+    const data = continents
+      .map((cont) => {
+        const v = byKey.get(key(cont, state.item, state.element, state.year));
+        return { cont, value: (v != null && !isNaN(v) && v > 0) ? v : null, color: CONTINENT_COLORS[cont] };
+      })
+      .filter((d) => d.value != null);
+
+    if (data.length === 0) {
+      svgContinentDonut.append("text").attr("x", 10).attr("y", 30)
+        .attr("fill", "#94a3b8").attr("font-size", 13).text("Aucune donnée.");
+      return;
+    }
+
+    const total = d3.sum(data, (d) => d.value);
+    const unit = units.get(`${state.item}|${state.element}`) || "";
+    const w = svgContinentDonut.node().clientWidth || 260;
+    const h = svgContinentDonut.node().clientHeight || 300;
+    svgContinentDonut.attr("viewBox", `0 0 ${w} ${h}`);
+
+    const radius = Math.min(w, h) / 2 * 0.88;
+    const innerRadius = radius * 0.55;
+    const cx = w / 2, cy = h / 2;
+
+    const pie = d3.pie().value((d) => d.value).sort(null);
+    const arc = d3.arc().innerRadius(innerRadius).outerRadius(radius);
+    const arcHov = d3.arc().innerRadius(innerRadius).outerRadius(radius * 1.07);
+
+    const g = svgContinentDonut.append("g").attr("transform", `translate(${cx},${cy})`);
+
+    g.selectAll("path")
+      .data(pie(data))
+      .join("path")
+      .attr("d", arc)
+      .attr("fill", (d) => d.data.color)
+      .attr("stroke", "white")
+      .attr("stroke-width", 2)
+      .style("cursor", "pointer")
+      .on("mousemove", (e, d) => {
+        d3.select(e.currentTarget).attr("d", arcHov);
+        const pct = ((d.data.value / total) * 100).toFixed(1);
+        showTooltip(`<b>${d.data.cont}</b><br>${formatNumber(d.data.value)} ${unit}<br>${pct}%`, e.clientX, e.clientY);
+      })
+      .on("mouseleave", (e) => { d3.select(e.currentTarget).attr("d", arc); hideTooltip(); });
+
+    g.append("text").attr("text-anchor", "middle").attr("y", -8)
+      .attr("font-size", 14).attr("font-weight", "700").attr("fill", "#0f172a").text(state.year);
+    g.append("text").attr("text-anchor", "middle").attr("y", 10)
+      .attr("font-size", 10).attr("fill", "#64748b").text("continents");
+
+    const legendDiv = document.getElementById("continentDonutLegend");
+    if (legendDiv) {
+      legendDiv.innerHTML = data.map((d) => {
+        const pct = ((d.value / total) * 100).toFixed(1);
+        return `<div class="donutLegendItem">
+          <div class="donutDot" style="background:${d.color}"></div>
+          <div class="donutLegendName">${d.cont}</div>
+          <div class="donutLegendPct">${pct}%</div>
+          <div class="donutLegendVal">${formatNumber(d.value)}</div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  function renderStackedArea() {
+    if (!svgStackedArea.node()) return;
+    svgStackedArea.selectAll("*").remove();
+
+    const w = svgStackedArea.node().clientWidth || 900;
+    const h = svgStackedArea.node().clientHeight || 300;
+    svgStackedArea.attr("viewBox", `0 0 ${w} ${h}`);
+
+    const items = Array.from(itemsSet).sort(d3.ascending);
+    const allYears = d3.range(+yearSlider.min, +yearSlider.max + 1);
+
+    // Compute % share of each item per year (always uses Production for the stack)
+    const tableData = allYears.map((yr) => {
+      const row = { year: yr };
+      let total = 0;
+      const vals = {};
+      for (const item of items) {
+        const v = getWorldValue(item, "Production", yr);
+        vals[item] = (v != null && !isNaN(v)) ? v : 0;
+        total += vals[item];
+      }
+      for (const item of items) {
+        row[item] = total > 0 ? (vals[item] / total) * 100 : 0;
+      }
+      return row;
+    });
+
+    const margin = { top: 16, right: 20, bottom: 40, left: 52 };
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+    const g = svgStackedArea.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear().domain([+yearSlider.min, +yearSlider.max]).range([0, innerW]);
+    const y = d3.scaleLinear().domain([0, 100]).range([innerH, 0]);
+
+    const colorScale = d3.scaleOrdinal().domain(items).range(CROP_COLORS_PAL);
+    const stack = d3.stack().keys(items).offset(d3.stackOffsetNone);
+    const series = stack(tableData);
+
+    const area = d3.area()
+      .x((d) => x(d.data.year))
+      .y0((d) => y(d[0]))
+      .y1((d) => y(d[1]));
+
+    g.selectAll("path.layer")
+      .data(series)
+      .join("path")
+      .attr("class", "layer")
+      .attr("d", area)
+      .attr("fill", (d) => colorScale(d.key))
+      .attr("opacity", 0.82)
+      .on("mousemove", (e, d) => {
+        const [mx] = d3.pointer(e);
+        const yr = Math.round(x.invert(mx));
+        const row = tableData.find((r) => r.year === yr);
+        if (!row) return;
+        showTooltip(`<b>${d.key}</b><br>${yr} : ${row[d.key].toFixed(1)}%`, e.clientX, e.clientY);
+      })
+      .on("mouseleave", hideTooltip);
+
+    // Ligne verticale = année sélectionnée dans le dashboard
+    g.append("line")
+      .attr("x1", x(state.year)).attr("x2", x(state.year))
+      .attr("y1", 0).attr("y2", innerH)
+      .attr("stroke", "#0f172a").attr("stroke-width", 1.5)
+      .attr("stroke-dasharray", "4,3").attr("opacity", 0.5);
+
+    const xAxis = g.append("g")
+      .attr("transform", `translate(0,${innerH})`)
+      .call(d3.axisBottom(x).ticks(10).tickFormat(d3.format("d")))
+      .call(styleAxis);
+
+    xAxis.append("text")
+      .attr("x", innerW / 2).attr("y", 32)
+      .attr("fill", "#64748b").attr("text-anchor", "middle")
+      .attr("font-size", 11).attr("font-weight", "600").text("Année");
+
+    const yAxis = g.append("g")
+      .call(d3.axisLeft(y).ticks(5).tickFormat((d) => d + "%"))
+      .call(styleAxis);
+
+    yAxis.append("text")
+      .attr("x", -innerH / 2).attr("y", -40)
+      .attr("transform", "rotate(-90)").attr("text-anchor", "middle")
+      .attr("fill", "#64748b").attr("font-size", 11).attr("font-weight", "600")
+      .text("Part de la production mondiale (%)");
+
+    // Labels inline sur les zones suffisamment larges
+    series.forEach((s) => {
+      const midIdx = Math.floor(s.length / 2);
+      const d = s[midIdx];
+      const bandH = y(d[0]) - y(d[1]);
+      if (bandH < 12) return;
+      g.append("text")
+        .attr("x", x(s[midIdx].data.year))
+        .attr("y", (y(d[0]) + y(d[1])) / 2 + 4)
+        .attr("text-anchor", "middle")
+        .attr("font-size", 10).attr("font-weight", "600")
+        .attr("fill", "white").attr("pointer-events", "none")
+        .text(truncateLabel(s.key, 10));
+    });
   }
 });

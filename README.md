@@ -1,4 +1,4 @@
-# 🌾 Cartographie interactive de l'évolution mondiale des grandes cultures (1961–2024)
+# PRODMONDE — Cartographie interactive de l'évolution mondiale des grandes cultures (1961–2024)
 
 **Auteur :** Bamishola LOKE | École Centrale Lyon
 
@@ -18,6 +18,3 @@
 - `styles.css` — Styles
 - `data/` — Dataset FAOSTAT filtré
 
-
-
-mise a jour.
