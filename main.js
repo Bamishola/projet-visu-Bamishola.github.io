@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     item: null,
     element: "Production",
     year: 1980,
-    scaleMode: "linear", // linear|log
+    scaleMode: "linear", // linear|sqrt
     topN: 15,
     playing: false,
     selectedCountries: [], // Sélection multiple
@@ -573,15 +573,9 @@ document.addEventListener("DOMContentLoaded", function () {
   function updateMapLabels(zoomK = 1) {
     if (!mapLabelsG || !path) return;
 
-    const minArea =
-      zoomK < 1.6 ? 5600 :
-      zoomK < 2.6 ? 2500 :
-      zoomK < 4 ? 1100 : 280;
-
-    const maxLabels =
-      zoomK < 1.6 ? 26 :
-      zoomK < 2.6 ? 46 :
-      zoomK < 4 ? 80 : 140;
+    // Labels fixes supprimés (choix : aucun label permanent, tooltip au hover uniquement)
+    const minArea = Infinity;
+    const maxLabels = 0;
 
     const rows = mapCountryFeatures
       .map((feature) => {
@@ -699,17 +693,17 @@ document.addEventListener("DOMContentLoaded", function () {
     const alphaMin = 0.12;
     const alphaMax = 0.95;
 
-    if (state.scaleMode === "log") {
-      const minPos = Math.max(1e-9, min <= 0 ? 1e-9 : min);
-      const maxPos = Math.max(minPos * 1.0001, max);
+    if (state.scaleMode === "sqrt") {
+      const minPos = Math.max(0, min);
+      const maxPos = Math.max(minPos + 1e-9, max);
       const alphaScale = d3
-        .scaleLog()
+        .scaleSqrt()
         .domain([minPos, maxPos])
         .range([alphaMin, alphaMax])
         .clamp(true);
 
       return (v) => {
-        if (v == null || isNaN(v) || v <= 0) return "#f1f5f9";
+        if (v == null || isNaN(v) || v < 0) return "#f1f5f9";
         const a = alphaScale(v);
         return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
       };
